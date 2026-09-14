@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -16,7 +16,7 @@ def document(**overrides):
         "source_key": EgyptSourceKey.EGX_DISCLOSURES,
         "source_url": "https://beta.egx.com.eg/ar/media-center",
         "published_on": date(2026, 9, 1),
-        "observed_at": datetime(2026, 9, 2, 9),
+        "observed_at": datetime(2026, 9, 2, 9, tzinfo=timezone.utc),
         "authority": "official",
         "payload": {"ticker": "COMI.CA", "headline": "اختبار"},
     }
@@ -38,8 +38,8 @@ def test_point_in_time_read_excludes_evidence_not_yet_observed(tmp_path):
     store = EvidenceStore(tmp_path / "evidence.sqlite3")
     store.add(document())
 
-    before = store.known_at(datetime(2026, 9, 2, 8, 59))
-    after = store.known_at(datetime(2026, 9, 2, 9, 0))
+    before = store.known_at(datetime(2026, 9, 2, 8, 59, tzinfo=timezone.utc))
+    after = store.known_at(datetime(2026, 9, 2, 9, 0, tzinfo=timezone.utc))
 
     assert before == ()
     assert len(after) == 1
