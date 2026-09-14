@@ -89,3 +89,64 @@ def test_read_detects_database_tampering(tmp_path):
 
     with pytest.raises(ValueError, match="integrity check"):
         store.known_at(datetime(2026, 9, 3, tzinfo=timezone.utc))
+
+
+
+def test_read_detects_subject_metadata_tampering(tmp_path):
+    database = tmp_path / "evidence.sqlite3"
+    store = EvidenceStore(database)
+    store.add(document())
+
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE evidence SET subjects_json = ?",
+            ('["SWDY.CA"]',),
+        )
+
+    with pytest.raises(ValueError, match="metadata failed"):
+        store.known_at(datetime(2026, 9, 3, tzinfo=timezone.utc))
+
+
+def test_reimport_backfills_subjects_in_legacy_database(tmp_path):
+    database = tmp_path / "legacy.sqlite3"
+    payload_json = canonical_payload(document().payload)
+    digest = payload_hash(payload_json)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE evidence (
+                id INTEGER PRIMARY KEY,
+                source_key TEXT NOT NULL,
+                source_url TEXT NOT NULL,
+                published_on TEXT NOT NULL,
+                observed_at TEXT NOT NULL,
+                authority TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                UNIQUE(source_key, source_url, published_on, content_hash)
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO evidence (
+                source_key, source_url, published_on, observed_at,
+                authority, content_hash, payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "egx_disclosures",
+                "https://beta.egx.com.eg/ar/media-center",
+                "2026-09-01",
+                "2026-09-02T09:00:00+00:00",
+                "official",
+                digest,
+                payload_json,
+            ),
+        )
+
+    store = EvidenceStore(database)
+    stored = store.add(document())
+
+    assert stored.record_id == 1
+    assert stored.reference.subjects == ("COMI.CA",)
