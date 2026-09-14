@@ -3,7 +3,8 @@ import pytest
 from tradingagents.markets.egypt import (
     EGYPT_MARKET,
     is_egx_ticker,
-    normalize_egx_equity_ticker,\n    normalize_egx_ticker,
+    normalize_egx_equity_ticker,
+    normalize_egx_ticker,
 )
 
 
