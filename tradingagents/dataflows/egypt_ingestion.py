@@ -50,6 +50,9 @@ class FetchPolicy:
     backoff_factor: float = 0.5
 
 
+DEFAULT_FETCH_POLICY = FetchPolicy()
+
+
 def _new_session(policy: FetchPolicy) -> requests.Session:
     session = requests.Session()
     retry = Retry(
@@ -73,7 +76,7 @@ class EgyptSourceClient:
     def __init__(
         self,
         session: requests.Session | None = None,
-        policy: FetchPolicy = FetchPolicy(),
+        policy: FetchPolicy = DEFAULT_FETCH_POLICY,
     ):
         self.policy = policy
         self.session = session or _new_session(policy)
@@ -124,12 +127,13 @@ class EgyptSourceClient:
         declared_length = response.headers.get("Content-Length")
         if declared_length is not None:
             try:
-                if int(declared_length) > self.policy.maximum_bytes:
-                    raise ValueError("Source response exceeds the configured size limit")
+                parsed_length = int(declared_length)
             except ValueError as exc:
-                if "exceeds" in str(exc):
-                    raise
                 raise ValueError("Invalid Content-Length header") from exc
+            if parsed_length < 0:
+                raise ValueError("Invalid Content-Length header")
+            if parsed_length > self.policy.maximum_bytes:
+                raise ValueError("Source response exceeds the configured size limit")
 
         body = bytearray()
         for chunk in response.iter_content(chunk_size=64 * 1024):
