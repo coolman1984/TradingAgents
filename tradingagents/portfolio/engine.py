@@ -210,6 +210,10 @@ def score_security(
     )
 
 
+def _sector_key(value: str) -> str:
+    return " ".join(value.split()).casefold()
+
+
 def _select_diversified(
     scored: list[ScoredSecurity],
     mandate: PortfolioMandate,
@@ -232,7 +236,7 @@ def _select_diversified(
     max_names_per_sector = max(1, int(mandate.max_sector_weight / equal_weight))
 
     for item in ranked:
-        sector = item.assessment.sector
+        sector = _sector_key(item.assessment.sector)
         if sector_counts.get(sector, 0) >= max_names_per_sector:
             continue
         selected.append(item)
