@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import date, datetime, timezone
 
 import pytest
@@ -70,3 +71,19 @@ def test_spoofed_host_is_rejected_before_storage(tmp_path):
     store = EvidenceStore(tmp_path / "evidence.sqlite3")
     with pytest.raises(ValueError, match="not allowed"):
         store.add(document(source_url="https://egx.com.eg.attacker.example/data"))
+
+
+
+def test_read_detects_database_tampering(tmp_path):
+    database = tmp_path / "evidence.sqlite3"
+    store = EvidenceStore(database)
+    store.add(document())
+
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE evidence SET payload_json = ?",
+            ('{"ticker":"TAMPERED.CA"}',),
+        )
+
+    with pytest.raises(ValueError, match="integrity check"):
+        store.known_at(datetime(2026, 9, 3, tzinfo=timezone.utc))
