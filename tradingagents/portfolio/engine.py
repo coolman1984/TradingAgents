@@ -9,9 +9,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+from tradingagents.markets.egypt_sources import (
+    EgyptSourceKey,
+    validate_evidence_source,
+)
 from tradingagents.portfolio.mandate import (
     DEFAULT_EGX_BALANCED_MANDATE,
     PortfolioMandate,
+    ShariaTier,
 )
 from tradingagents.portfolio.models import (
     AdvisoryAction,
@@ -77,6 +82,20 @@ def score_security(
     data_issues: list[str] = []
     policy_issues: list[str] = []
 
+    expected_sharia_source = None
+    if assessment.sharia_tier is ShariaTier.OFFICIAL_INDEX:
+        expected_sharia_source = EgyptSourceKey.EGX_SHARIA_CONSTITUENTS
+    elif assessment.sharia_tier is ShariaTier.INDEPENDENTLY_REVIEWED:
+        expected_sharia_source = EgyptSourceKey.INDEPENDENT_SHARIA_REVIEW
+
+    sharia_source_issues = validate_evidence_source(
+        assessment.sharia_evidence,
+        expected_source=expected_sharia_source,
+    )
+    data_issues.extend(
+        f"Sharia evidence: {issue}" for issue in sharia_source_issues
+    )
+
     sharia_date = assessment.sharia_evidence.published_on
     if sharia_date > analysis_date:
         data_issues.append("Sharia evidence is from the future")
@@ -105,6 +124,16 @@ def score_security(
         if any(ref.published_on > analysis_date for ref in item.evidence):
             data_issues.append(
                 f"{dimension.value} evidence includes a future publication"
+            )
+            continue
+        source_issues = tuple(
+            issue
+            for ref in item.evidence
+            for issue in validate_evidence_source(ref)
+        )
+        if source_issues:
+            data_issues.extend(
+                f"{dimension.value} evidence: {issue}" for issue in source_issues
             )
             continue
         usable[dimension] = item
