@@ -8,9 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Protocol
 from urllib.parse import urlparse
-
-from tradingagents.portfolio.models import EvidenceRef
 
 
 class EgyptSourceKey(str, Enum):
@@ -21,10 +20,18 @@ class EgyptSourceKey(str, Enum):
     CBE_MACRO = "cbe_macro"
     CAPMAS_INFLATION = "capmas_inflation"
     FRA_RULES = "fra_rules"
+    INDEPENDENT_SHARIA_REVIEW = "independent_sharia_review"
     YAHOO_PRICES = "yahoo_prices"
 
 
 @dataclass(frozen=True)
+class EvidenceLike(Protocol):
+    source: str
+    url: str
+    authority: str
+    content_hash: str | None
+
+
 class EgyptSourceSpec:
     key: EgyptSourceKey
     label: str
@@ -77,6 +84,14 @@ EGYPT_SOURCE_REGISTRY: dict[EgyptSourceKey, EgyptSourceSpec] = {
         "official",
         ("fra.gov.eg",),
     ),
+    EgyptSourceKey.INDEPENDENT_SHARIA_REVIEW: EgyptSourceSpec(
+        EgyptSourceKey.INDEPENDENT_SHARIA_REVIEW,
+        "Independently reviewed Sharia document",
+        "secondary",
+        (),
+        required=False,
+        allow_file_import=True,
+    ),
     EgyptSourceKey.YAHOO_PRICES: EgyptSourceSpec(
         EgyptSourceKey.YAHOO_PRICES,
         "Yahoo Finance EGX price fallback",
@@ -94,7 +109,7 @@ def _host_matches(host: str, allowed_host: str) -> bool:
 
 
 def validate_evidence_source(
-    evidence: EvidenceRef,
+    evidence: EvidenceLike,
     *,
     expected_source: EgyptSourceKey | None = None,
 ) -> tuple[str, ...]:
