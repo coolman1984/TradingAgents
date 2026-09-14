@@ -27,6 +27,30 @@ def main() -> None:
     """Evidence-first portfolio planning for Egyptian listed equities."""
 
 
+def _verify_snapshot_evidence(
+    snapshot: PortfolioSnapshot,
+    store: EvidenceStore,
+) -> None:
+    references = list(snapshot.market_evidence)
+    for assessment in snapshot.candidates:
+        references.append(assessment.sharia_evidence)
+        for dimension in assessment.dimensions:
+            references.extend(dimension.evidence)
+
+    checked: set[tuple[str, str, str, str | None]] = set()
+    for reference in references:
+        key = (
+            reference.source,
+            reference.url,
+            reference.published_on.isoformat(),
+            reference.content_hash,
+        )
+        if key in checked:
+            continue
+        store.require(reference)
+        checked.add(key)
+
+
 @app.command("snapshot-schema")
 def snapshot_schema() -> None:
     """Print the strict PortfolioSnapshot JSON schema."""
@@ -98,6 +122,14 @@ def plan(
         resolve_path=True,
         help="Directory for the JSON and Arabic Markdown reports.",
     ),
+    database: Path = typer.Option(
+        Path("egx-evidence.sqlite3"),
+        "--database",
+        "-d",
+        dir_okay=False,
+        resolve_path=True,
+        help="Verified SQLite evidence database used by every snapshot reference.",
+    ),
     force: bool = typer.Option(
         False,
         "--force",
@@ -108,6 +140,7 @@ def plan(
     try:
         raw = json.loads(input_file.read_text(encoding="utf-8"))
         snapshot = PortfolioSnapshot.model_validate(raw)
+        _verify_snapshot_evidence(snapshot, EvidenceStore(database))
         portfolio_plan = build_portfolio_plan(snapshot)
         json_path, markdown_path = save_plan_report(
             portfolio_plan,
