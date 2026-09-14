@@ -8,7 +8,10 @@ from pathlib import Path
 import typer
 from pydantic import ValidationError
 
+from tradingagents.dataflows.egypt_ingestion import import_evidence_bundle
+from tradingagents.markets.egypt_sources import EgyptSourceKey
 from tradingagents.portfolio.engine import build_portfolio_plan
+from tradingagents.portfolio.evidence_store import EvidenceStore
 from tradingagents.portfolio.models import PortfolioSnapshot
 from tradingagents.portfolio.reporting import save_plan_report
 
@@ -22,6 +25,46 @@ app = typer.Typer(
 @app.callback()
 def main() -> None:
     """Evidence-first portfolio planning for Egyptian listed equities."""
+
+
+@app.command("import-evidence")
+def import_evidence(
+    bundle_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        resolve_path=True,
+        help="Strict version-1 evidence bundle in UTF-8 JSON.",
+    ),
+    database: Path = typer.Option(
+        Path("egx-evidence.sqlite3"),
+        "--database",
+        "-d",
+        dir_okay=False,
+        resolve_path=True,
+        help="SQLite evidence database.",
+    ),
+    expected_source: EgyptSourceKey | None = typer.Option(
+        None,
+        "--expected-source",
+        help="Reject the bundle unless it contains this source.",
+    ),
+) -> None:
+    """Validate and idempotently store an offline evidence bundle."""
+    try:
+        stored = import_evidence_bundle(
+            bundle_file,
+            EvidenceStore(database),
+            expected_source=expected_source,
+        )
+    except (OSError, ValidationError, ValueError) as exc:
+        typer.echo(f"Evidence import error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"Stored evidence record: {stored.record_id}")
+    typer.echo(f"SHA-256: {stored.reference.content_hash}")
 
 
 @app.command()
