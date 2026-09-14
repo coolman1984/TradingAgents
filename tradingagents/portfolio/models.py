@@ -104,6 +104,7 @@ class PortfolioSnapshot(BaseModel):
     cash_egp: float = Field(ge=0)
     positions: tuple[PortfolioPosition, ...] = ()
     candidates: tuple[SecurityAssessment, ...] = Field(min_length=1)
+    market_evidence: tuple[EvidenceRef, ...] = ()
     estimated_switch_cost_pct: float | None = Field(default=None, ge=0, le=0.10)
 
     @model_validator(mode="after")
