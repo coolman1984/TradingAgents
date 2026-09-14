@@ -100,6 +100,11 @@ def score_security(
         assessment.sharia_evidence,
         expected_source=expected_sharia_source,
     )
+    if not assessment.sharia_evidence.content_hash:
+        sharia_source_issues = (
+            *sharia_source_issues,
+            "Evidence content hash is required",
+        )
     data_issues.extend(
         f"Sharia evidence: {issue}" for issue in sharia_source_issues
     )
@@ -144,7 +149,10 @@ def score_security(
         source_issues = tuple(
             issue
             for ref in item.evidence
-            for issue in validate_evidence_source(ref)
+            for issue in (
+                *validate_evidence_source(ref),
+                *(() if ref.content_hash else ("Evidence content hash is required",)),
+            )
         )
         if source_issues:
             data_issues.extend(
