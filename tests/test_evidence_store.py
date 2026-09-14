@@ -20,6 +20,7 @@ def document(**overrides):
         "observed_at": datetime(2026, 9, 2, 9, tzinfo=timezone.utc),
         "authority": "official",
         "payload": {"ticker": "COMI.CA", "headline": "اختبار"},
+        "subjects": ("COMI",),
     }
     values.update(overrides)
     return EvidenceDocument(**values)
@@ -33,6 +34,7 @@ def test_add_is_idempotent_and_preserves_arabic(tmp_path):
     assert first.record_id == second.record_id
     assert first.reference.content_hash == second.reference.content_hash
     assert first.payload["headline"] == "اختبار"
+    assert first.reference.subjects == ("COMI.CA",)
 
 
 def test_point_in_time_read_excludes_evidence_not_yet_observed(tmp_path):
