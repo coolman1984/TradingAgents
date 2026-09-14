@@ -54,15 +54,16 @@ def render_arabic_markdown(plan: PortfolioPlan) -> str:
     ]
     lines.extend(_action_row(action) for action in plan.actions)
 
-    monthly = plan.monthly_contribution_action
     lines.extend(
         [
             "",
-            "## مساهمة الشهر",
+            f"## توزيع مساهمة الشهر ({plan.monthly_contribution_egp:,.2f} جنيه)",
             "",
-            _action_row(monthly),
+            "| السهم | القرار | الوزن المستهدف | التغير بالجنيه | الدرجة | الثقة | السبب |",
+            "|---|---:|---:|---:|---:|---:|---|",
         ]
     )
+    lines.extend(_action_row(action) for action in plan.monthly_contribution_actions)
 
     if plan.blocked_reasons:
         lines.extend(["", "## أسباب حجب التوصية", ""])
