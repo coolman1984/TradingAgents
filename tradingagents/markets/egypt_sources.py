@@ -165,6 +165,44 @@ def validate_evidence_source(
     return tuple(issues)
 
 
+def validate_evidence_for_date(
+    evidence: EvidenceLike,
+    analysis_date: date,
+    *,
+    expected_source: EgyptSourceKey | None = None,
+    maximum_age_days: int | None = None,
+) -> tuple[str, ...]:
+    """Validate provenance, integrity and point-in-time freshness together."""
+    issues = list(
+        validate_evidence_source(evidence, expected_source=expected_source)
+    )
+    if not evidence.content_hash:
+        issues.append("Evidence content hash is required")
+
+    try:
+        source_key = EgyptSourceKey(evidence.source)
+    except ValueError:
+        return tuple(dict.fromkeys(issues))
+
+    if evidence.published_on > analysis_date:
+        issues.append("Publication is from the future")
+    if evidence.observed_at.date() > analysis_date:
+        issues.append("Evidence was not known on analysis date")
+
+    age_days = (analysis_date - evidence.published_on).days
+    source_maximum = EGYPT_SOURCE_REGISTRY[source_key].max_age_days
+    effective_maximum = (
+        source_maximum
+        if maximum_age_days is None
+        else min(source_maximum, maximum_age_days)
+    )
+    if age_days > effective_maximum:
+        issues.append(
+            f"Evidence is stale ({age_days} days, maximum {effective_maximum})"
+        )
+    return tuple(dict.fromkeys(issues))
+
+
 def missing_required_sources(source_keys: set[str]) -> tuple[str, ...]:
     """Return required source keys absent from a completed ingestion run."""
     required = {
@@ -182,29 +220,11 @@ def evaluate_source_coverage(
     issues: list[str] = []
 
     for evidence in evidence_refs:
-        source_issues = validate_evidence_source(evidence)
-        if not evidence.content_hash:
-            source_issues = (*source_issues, "Evidence content hash is required")
-        if source_issues:
-            issues.extend(f"{evidence.source}: {issue}" for issue in source_issues)
+        evidence_issues = validate_evidence_for_date(evidence, analysis_date)
+        if evidence_issues:
+            issues.extend(f"{evidence.source}: {issue}" for issue in evidence_issues)
             continue
 
-        source_key = EgyptSourceKey(evidence.source)
-        if evidence.published_on > analysis_date:
-            issues.append(f"{source_key.value}: publication is from the future")
-            continue
-        if evidence.observed_at.date() > analysis_date:
-            issues.append(f"{source_key.value}: evidence was not known on analysis date")
-            continue
-
-        age_days = (analysis_date - evidence.published_on).days
-        maximum_age = EGYPT_SOURCE_REGISTRY[source_key].max_age_days
-        if age_days > maximum_age:
-            issues.append(
-                f"{source_key.value}: evidence is stale "
-                f"({age_days} days, maximum {maximum_age})"
-            )
-            continue
-        valid.add(source_key.value)
+        valid.add(EgyptSourceKey(evidence.source).value)
 
     return frozenset(valid), tuple(dict.fromkeys(issues))
