@@ -7,7 +7,8 @@ software never invents a fatwa or turns a vague model opinion into eligibility.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass\nfrom datetime import date
+from dataclasses import dataclass
+from datetime import date
 from enum import Enum
 from math import isclose
 from typing import Iterable
