@@ -85,7 +85,7 @@ egx-portfolio plan portfolio-snapshot.json --output egx-output
 {
   "schema_version": 1,
   "source_key": "egx_sharia_constituents",
-  "source_url": "https://www.egx.com.eg/sharia",
+  "source_url": "https://beta.egx.com.eg/ar",
   "published_on": "2026-09-01",
   "observed_at": "2026-09-02T09:00:00+00:00",
   "authority": "official",
