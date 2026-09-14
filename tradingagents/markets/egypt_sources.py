@@ -24,7 +24,6 @@ class EgyptSourceKey(str, Enum):
     YAHOO_PRICES = "yahoo_prices"
 
 
-@dataclass(frozen=True)
 class EvidenceLike(Protocol):
     source: str
     url: str
@@ -32,6 +31,7 @@ class EvidenceLike(Protocol):
     content_hash: str | None
 
 
+@dataclass(frozen=True)
 class EgyptSourceSpec:
     key: EgyptSourceKey
     label: str
