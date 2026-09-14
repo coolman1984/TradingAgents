@@ -50,6 +50,30 @@ def payload_hash(payload_json: str) -> str:
     return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
 
 
+def record_hash(
+    *,
+    source_key: str,
+    source_url: str,
+    published_on: str,
+    observed_at: str,
+    authority: str,
+    subjects_json: str,
+    content_hash: str,
+) -> str:
+    envelope = canonical_payload(
+        {
+            "source_key": source_key,
+            "source_url": source_url,
+            "published_on": published_on,
+            "observed_at": observed_at,
+            "authority": authority,
+            "subjects": json.loads(subjects_json),
+            "content_hash": content_hash,
+        }
+    )
+    return payload_hash(envelope)
+
+
 def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("knowledge timestamps must include a timezone")
@@ -84,6 +108,7 @@ class EvidenceStore:
                     authority TEXT NOT NULL,
                     subjects_json TEXT NOT NULL DEFAULT '[]',
                     content_hash TEXT NOT NULL,
+                    record_hash TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
                     UNIQUE(source_key, source_url, published_on, content_hash)
                 )
@@ -98,6 +123,29 @@ class EvidenceStore:
                     "ALTER TABLE evidence "
                     "ADD COLUMN subjects_json TEXT NOT NULL DEFAULT '[]'"
                 )
+            if "record_hash" not in columns:
+                connection.execute("ALTER TABLE evidence ADD COLUMN record_hash TEXT")
+                rows = connection.execute(
+                    """
+                    SELECT id, source_key, source_url, published_on, observed_at,
+                           authority, subjects_json, content_hash
+                    FROM evidence
+                    """
+                ).fetchall()
+                for row in rows:
+                    calculated = record_hash(
+                        source_key=row["source_key"],
+                        source_url=row["source_url"],
+                        published_on=row["published_on"],
+                        observed_at=row["observed_at"],
+                        authority=row["authority"],
+                        subjects_json=row["subjects_json"],
+                        content_hash=row["content_hash"],
+                    )
+                    connection.execute(
+                        "UPDATE evidence SET record_hash = ? WHERE id = ?",
+                        (calculated, row["id"]),
+                    )
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_evidence_known_at
@@ -124,14 +172,25 @@ class EvidenceStore:
         if issues:
             raise ValueError("; ".join(issues))
 
+        subjects_json = json.dumps(reference.subjects)
+        calculated_record_hash = record_hash(
+            source_key=document.source_key.value,
+            source_url=reference.url,
+            published_on=reference.published_on.isoformat(),
+            observed_at=reference.observed_at.isoformat(),
+            authority=reference.authority,
+            subjects_json=subjects_json,
+            content_hash=calculated_hash,
+        )
         values = (
             document.source_key.value,
             reference.url,
             reference.published_on.isoformat(),
             reference.observed_at.isoformat(),
             reference.authority,
-            json.dumps(reference.subjects),
+            subjects_json,
             calculated_hash,
+            calculated_record_hash,
             payload_json,
         )
         with self._connect() as connection:
@@ -139,15 +198,24 @@ class EvidenceStore:
                 """
                 INSERT OR IGNORE INTO evidence (
                     source_key, source_url, published_on, observed_at,
-                    authority, subjects_json, content_hash, payload_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    authority, subjects_json, content_hash, record_hash,
+                    payload_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(source_key, source_url, published_on, content_hash)
+                DO UPDATE SET
+                    observed_at = excluded.observed_at,
+                    authority = excluded.authority,
+                    subjects_json = excluded.subjects_json,
+                    record_hash = excluded.record_hash,
+                    payload_json = excluded.payload_json
                 """,
                 values,
             )
             row = connection.execute(
                 """
                 SELECT id, source_key, source_url, published_on, observed_at,
-                       authority, subjects_json, content_hash, payload_json
+                       authority, subjects_json, content_hash, record_hash,
+                       payload_json
                 FROM evidence
                 WHERE source_key = ? AND source_url = ? AND published_on = ?
                       AND content_hash = ?
@@ -170,7 +238,8 @@ class EvidenceStore:
             rows = connection.execute(
                 """
                 SELECT id, source_key, source_url, published_on, observed_at,
-                       authority, subjects_json, content_hash, payload_json
+                       authority, subjects_json, content_hash, record_hash,
+                       payload_json
                 FROM evidence
                 WHERE source_key = ? AND source_url = ? AND published_on = ?
                       AND content_hash = ?
@@ -200,7 +269,8 @@ class EvidenceStore:
     ) -> tuple[StoredEvidence, ...]:
         query = """
             SELECT id, source_key, source_url, published_on, observed_at,
-                   authority, subjects_json, content_hash, payload_json
+                   authority, subjects_json, content_hash, record_hash,
+                   payload_json
             FROM evidence
             WHERE observed_at <= ?
         """
@@ -220,6 +290,20 @@ class EvidenceStore:
         calculated_hash = payload_hash(canonical_payload(payload))
         if calculated_hash != row["content_hash"]:
             raise ValueError(f"Stored evidence {row['id']} failed its integrity check")
+
+        calculated_record_hash = record_hash(
+            source_key=row["source_key"],
+            source_url=row["source_url"],
+            published_on=row["published_on"],
+            observed_at=row["observed_at"],
+            authority=row["authority"],
+            subjects_json=row["subjects_json"],
+            content_hash=row["content_hash"],
+        )
+        if calculated_record_hash != row["record_hash"]:
+            raise ValueError(
+                f"Stored evidence {row['id']} metadata failed its integrity check"
+            )
 
         reference = EvidenceRef(
             source=row["source_key"],
