@@ -183,6 +183,8 @@ def evaluate_source_coverage(
 
     for evidence in evidence_refs:
         source_issues = validate_evidence_source(evidence)
+        if not evidence.content_hash:
+            source_issues = (*source_issues, "Evidence content hash is required")
         if source_issues:
             issues.extend(f"{evidence.source}: {issue}" for issue in source_issues)
             continue
