@@ -174,6 +174,11 @@ class EvidenceStore:
 
     @staticmethod
     def _from_row(row: sqlite3.Row) -> StoredEvidence:
+        payload = json.loads(row["payload_json"])
+        calculated_hash = payload_hash(canonical_payload(payload))
+        if calculated_hash != row["content_hash"]:
+            raise ValueError(f"Stored evidence {row['id']} failed its integrity check")
+
         reference = EvidenceRef(
             source=row["source_key"],
             url=row["source_url"],
@@ -185,5 +190,5 @@ class EvidenceStore:
         return StoredEvidence(
             record_id=row["id"],
             reference=reference,
-            payload=json.loads(row["payload_json"]),
+            payload=payload,
         )
