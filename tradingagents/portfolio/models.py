@@ -54,8 +54,7 @@ class SecurityAssessment(BaseModel):
     company_name: str = Field(min_length=1)
     sector: str = Field(min_length=1)
     sharia_tier: ShariaTier
-    sharia_source: str = Field(min_length=1)
-    sharia_as_of: date
+    sharia_evidence: EvidenceRef
     dimensions: tuple[DimensionScore, ...] = Field(min_length=1)
 
     @field_validator("ticker")
@@ -68,6 +67,11 @@ class SecurityAssessment(BaseModel):
         keys = [item.dimension for item in self.dimensions]
         if len(keys) != len(set(keys)):
             raise ValueError("each analysis dimension may appear only once")
+        if (
+            self.sharia_tier is ShariaTier.OFFICIAL_INDEX
+            and self.sharia_evidence.authority != "official"
+        ):
+            raise ValueError("official-index classification requires official evidence")
         return self
 
 
