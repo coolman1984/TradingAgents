@@ -4,7 +4,8 @@ from datetime import date, datetime, timezone
 from typer.testing import CliRunner
 
 from cli.egx_portfolio import app
-from tradingagents.portfolio.mandate import ShariaTier\nfrom tradingagents.portfolio.models import (
+from tradingagents.portfolio.mandate import ShariaTier
+from tradingagents.portfolio.models import (
     AdvisoryAction,
     AnalysisDimension,
     DimensionScore,
@@ -14,7 +15,6 @@ from tradingagents.portfolio.mandate import ShariaTier\nfrom tradingagents.portf
     PortfolioSnapshot,
     SecurityAssessment,
 )
-from tradingagents.portfolio.mandate import ShariaTier
 from tradingagents.portfolio.reporting import (
     render_arabic_markdown,
     save_plan_report,
