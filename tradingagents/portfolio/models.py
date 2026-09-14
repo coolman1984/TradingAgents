@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from tradingagents.markets.egypt import normalize_egx_ticker
+from tradingagents.markets.egypt import normalize_egx_equity_ticker
 from tradingagents.portfolio.mandate import ShariaTier
 
 
@@ -73,7 +73,7 @@ class SecurityAssessment(BaseModel):
     @field_validator("ticker")
     @classmethod
     def normalize_ticker(cls, value: str) -> str:
-        return normalize_egx_ticker(value)
+        return normalize_egx_equity_ticker(value)
 
     @model_validator(mode="after")
     def unique_dimensions(self):
@@ -96,7 +96,7 @@ class PortfolioPosition(BaseModel):
     @field_validator("ticker")
     @classmethod
     def normalize_ticker(cls, value: str) -> str:
-        return normalize_egx_ticker(value)
+        return normalize_egx_equity_ticker(value)
 
 
 class PortfolioSnapshot(BaseModel):
@@ -147,12 +147,12 @@ class PlanAction(BaseModel):
 
         if self.ticker is None:
             raise ValueError("security action requires a ticker")
-        self.ticker = normalize_egx_ticker(self.ticker)
+        self.ticker = normalize_egx_equity_ticker(self.ticker)
 
         if self.action is AdvisoryAction.REPLACE:
             if self.replacement_ticker is None:
                 raise ValueError("replace action requires replacement_ticker")
-            self.replacement_ticker = normalize_egx_ticker(self.replacement_ticker)
+            self.replacement_ticker = normalize_egx_equity_ticker(self.replacement_ticker)
             if self.replacement_ticker == self.ticker:
                 raise ValueError("replacement must be a different security")
         elif self.replacement_ticker is not None:
