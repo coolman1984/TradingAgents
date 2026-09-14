@@ -228,12 +228,21 @@ def _keep_cash_plan(
         confidence=1.0,
         reasons=("Insufficient verified candidates; do not force investment",),
     )
+    monthly_cash = PlanAction(
+        ticker=None,
+        action=AdvisoryAction.KEEP_CASH,
+        target_weight=1.0,
+        value_change_egp=DEFAULT_EGX_BALANCED_MANDATE.monthly_contribution_egp,
+        confidence=1.0,
+        reasons=("Keep the monthly contribution liquid until evidence is complete",),
+    )
     return PortfolioPlan(
         analysis_date=snapshot.analysis_date,
         investable_value_egp=total_value,
         target_cash_weight=1.0,
         actions=(keep_cash,),
-        monthly_contribution_action=keep_cash,
+        monthly_contribution_egp=DEFAULT_EGX_BALANCED_MANDATE.monthly_contribution_egp,
+        monthly_contribution_actions=(monthly_cash,),
         blocked_reasons=tuple(blocked),
         warnings=tuple(warnings),
     )
@@ -447,40 +456,44 @@ def build_portfolio_plan(
     if abs(target_total - 1.0) > 1e-6:
         blocked.append(f"Internal target budget mismatch: {target_total:.6f}")
 
-    projected_total = total_value + mandate.monthly_contribution_egp
-    underweights = []
-    for item in selected:
-        held = current.get(item.assessment.ticker)
-        held_value = held.current_value_egp if held else 0
-        deficit = selected_target * projected_total - held_value
-        underweights.append((deficit, item))
+    monthly_actions: list[PlanAction] = []
+    contribution = mandate.monthly_contribution_egp
+    allocation_base = actual_target_cash + selected_target * len(selected)
+    remaining = contribution
 
-    best_deficit, best = max(underweights, key=lambda pair: pair[0])
-    if best_deficit > 0 and not blocked:
-        monthly_action = PlanAction(
-            ticker=best.assessment.ticker,
-            action=(
-                AdvisoryAction.ADD
-                if best.assessment.ticker in current
-                else AdvisoryAction.BUY
-            ),
-            target_weight=selected_target,
-            value_change_egp=min(
-                mandate.monthly_contribution_egp,
-                round(best_deficit, 2),
-            ),
-            score=best.score,
-            confidence=best.confidence,
-            reasons=("Largest verified gap below target allocation",),
-        )
-    else:
-        monthly_action = PlanAction(
-            ticker=None,
-            action=AdvisoryAction.KEEP_CASH,
-            target_weight=actual_target_cash,
-            value_change_egp=mandate.monthly_contribution_egp,
-            confidence=1.0,
-            reasons=("No safe verified allocation is currently available",),
+    if allocation_base > 0:
+        for item in selected:
+            amount = round(contribution * selected_target / allocation_base, 2)
+            amount = min(amount, remaining)
+            remaining = round(remaining - amount, 2)
+            if amount <= 0:
+                continue
+            monthly_actions.append(
+                PlanAction(
+                    ticker=item.assessment.ticker,
+                    action=(
+                        AdvisoryAction.ADD
+                        if item.assessment.ticker in current
+                        else AdvisoryAction.BUY
+                    ),
+                    target_weight=selected_target,
+                    value_change_egp=amount,
+                    score=item.score,
+                    confidence=item.confidence,
+                    reasons=("Monthly contribution follows the verified target mix",),
+                )
+            )
+
+    if remaining > 0 or not monthly_actions:
+        monthly_actions.append(
+            PlanAction(
+                ticker=None,
+                action=AdvisoryAction.KEEP_CASH,
+                target_weight=actual_target_cash,
+                value_change_egp=remaining,
+                confidence=1.0,
+                reasons=("Cash share of the monthly contribution",),
+            )
         )
 
     return PortfolioPlan(
@@ -488,7 +501,8 @@ def build_portfolio_plan(
         investable_value_egp=total_value,
         target_cash_weight=actual_target_cash,
         actions=tuple(actions),
-        monthly_contribution_action=monthly_action,
+        monthly_contribution_egp=contribution,
+        monthly_contribution_actions=tuple(monthly_actions),
         blocked_reasons=tuple(blocked),
         warnings=tuple(dict.fromkeys(warnings)),
     )
