@@ -13,7 +13,7 @@ from tradingagents.markets.egypt_sources import (
     EgyptSourceKey,
     evaluate_source_coverage,
     missing_required_sources,
-    validate_evidence_source,
+    validate_evidence_for_date,
 )
 from tradingagents.portfolio.mandate import (
     DEFAULT_EGX_BALANCED_MANDATE,
@@ -96,26 +96,13 @@ def score_security(
     elif assessment.sharia_tier is ShariaTier.INDEPENDENTLY_REVIEWED:
         expected_sharia_source = EgyptSourceKey.INDEPENDENT_SHARIA_REVIEW
 
-    sharia_source_issues = validate_evidence_source(
+    sharia_issues = validate_evidence_for_date(
         assessment.sharia_evidence,
+        analysis_date,
         expected_source=expected_sharia_source,
+        maximum_age_days=policy.max_sharia_age_days,
     )
-    if not assessment.sharia_evidence.content_hash:
-        sharia_source_issues = (
-            *sharia_source_issues,
-            "Evidence content hash is required",
-        )
-    data_issues.extend(
-        f"Sharia evidence: {issue}" for issue in sharia_source_issues
-    )
-
-    sharia_date = assessment.sharia_evidence.published_on
-    if assessment.sharia_evidence.observed_at.date() > analysis_date:
-        data_issues.append("Sharia evidence was not known on analysis date")
-    if sharia_date > analysis_date:
-        data_issues.append("Sharia evidence is from the future")
-    elif _days_old(sharia_date, analysis_date) > policy.max_sharia_age_days:
-        data_issues.append("Sharia classification is stale")
+    data_issues.extend(f"Sharia evidence: {issue}" for issue in sharia_issues)
 
     if assessment.sharia_tier not in mandate.allowed_sharia_tiers:
         policy_issues.append(
@@ -136,27 +123,14 @@ def score_security(
         if _days_old(item.as_of, analysis_date) > policy.max_dimension_age_days:
             data_issues.append(f"{dimension.value} assessment is stale")
             continue
-        if any(ref.published_on > analysis_date for ref in item.evidence):
-            data_issues.append(
-                f"{dimension.value} evidence includes a future publication"
-            )
-            continue
-        if any(ref.observed_at.date() > analysis_date for ref in item.evidence):
-            data_issues.append(
-                f"{dimension.value} evidence was not known on analysis date"
-            )
-            continue
-        source_issues = tuple(
+        evidence_issues = tuple(
             issue
             for ref in item.evidence
-            for issue in (
-                *validate_evidence_source(ref),
-                *(() if ref.content_hash else ("Evidence content hash is required",)),
-            )
+            for issue in validate_evidence_for_date(ref, analysis_date)
         )
-        if source_issues:
+        if evidence_issues:
             data_issues.extend(
-                f"{dimension.value} evidence: {issue}" for issue in source_issues
+                f"{dimension.value} evidence: {issue}" for issue in evidence_issues
             )
             continue
         usable[dimension] = item
