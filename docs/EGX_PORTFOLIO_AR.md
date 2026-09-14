@@ -89,6 +89,7 @@ egx-portfolio plan portfolio-snapshot.json --output egx-output
   "published_on": "2026-09-01",
   "observed_at": "2026-09-02T09:00:00+00:00",
   "authority": "official",
+  "subjects": ["EFID.CA", "SWDY.CA"],
   "payload": {
     "tickers": ["EFID.CA", "SWDY.CA"]
   }
