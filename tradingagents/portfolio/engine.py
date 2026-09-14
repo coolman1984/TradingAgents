@@ -411,7 +411,9 @@ def build_portfolio_plan(
             blocked.append(f"{ticker}: cannot validate sector concentration")
             continue
         sector = _sector_key(item.assessment.sector)
-        current_weight = current[ticker].current_value_egp / total_value
+        current_weight = (
+            current[ticker].current_value_egp / total_value if total_value else 0
+        )
         target_sector_weights[sector] = (
             target_sector_weights.get(sector, 0) + current_weight
         )
