@@ -278,3 +278,31 @@ def test_plan_blocks_when_required_market_sources_are_missing():
     assert plan.blocked_reasons
     assert "Missing fresh required Egyptian sources" in plan.blocked_reasons[0]
     assert plan.actions[0].action is AdvisoryAction.KEEP_CASH
+
+
+
+@pytest.mark.unit
+def test_diversification_normalizes_sector_labels():
+    candidates = (
+        candidate("COMI", 90, "Banks"),
+        candidate("FAIT", 89, " banks "),
+        candidate("QNBA", 88, "BANKS"),
+        candidate("SWDY", 80, "Industrials"),
+        candidate("EFID", 79, "Consumer"),
+    )
+    plan = build_portfolio_plan(
+        PortfolioSnapshot(
+            analysis_date=date(2026, 9, 14),
+            cash_egp=10_000,
+            candidates=candidates,
+            market_evidence=market_evidence(),
+        )
+    )
+
+    bought = {
+        action.ticker
+        for action in plan.actions
+        if action.action is AdvisoryAction.BUY
+    }
+    assert len(bought & {"COMI.CA", "FAIT.CA", "QNBA.CA"}) == 2
+    assert {"SWDY.CA", "EFID.CA"} <= bought
