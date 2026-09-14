@@ -115,6 +115,10 @@ def test_initial_plan_keeps_cash_and_equal_weights_four_names():
     assert sum(
         item.value_change_egp for item in plan.monthly_contribution_actions
     ) == pytest.approx(1_000)
+    assert [
+        item.value_change_egp for item in plan.monthly_contribution_actions
+    ] == [200, 200, 200, 200, 200]
+    assert plan.monthly_contribution_actions[-1].action is AdvisoryAction.KEEP_CASH
     assert plan.advisory_only is True
 
 
@@ -258,3 +262,19 @@ def test_official_sharia_tier_ranks_before_independent_review():
     }
     assert "TMGH.CA" not in bought
     assert bought == {"EFID.CA", "SWDY.CA", "ORAS.CA", "ABUK.CA"}
+
+
+
+@pytest.mark.unit
+def test_plan_blocks_when_required_market_sources_are_missing():
+    plan = build_portfolio_plan(
+        PortfolioSnapshot(
+            analysis_date=date(2026, 9, 14),
+            cash_egp=10_000,
+            candidates=strong_candidates(),
+        )
+    )
+
+    assert plan.blocked_reasons
+    assert "Missing fresh required Egyptian sources" in plan.blocked_reasons[0]
+    assert plan.actions[0].action is AdvisoryAction.KEEP_CASH
