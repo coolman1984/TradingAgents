@@ -15,6 +15,17 @@ from tradingagents.portfolio.models import (
 )
 
 
+_SOURCE_URLS = {
+    "egx_prices": "https://www.egx.com.eg/prices",
+    "egx_disclosures": "https://www.egx.com.eg/disclosures",
+    "egx_financial_statements": "https://www.egx.com.eg/financials",
+    "egx_sharia_constituents": "https://www.egx.com.eg/sharia",
+    "cbe_macro": "https://www.cbe.org.eg/rates",
+    "capmas_inflation": "https://www.capmas.gov.eg/inflation",
+    "fra_rules": "https://www.fra.gov.eg/rules",
+}
+
+
 def evidence(
     published_on="2026-09-01",
     authority="official",
@@ -22,7 +33,7 @@ def evidence(
 ):
     return EvidenceRef(
         source=source,
-        url="https://www.egx.com.eg/example",
+        url=_SOURCE_URLS[source],
         published_on=published_on,
         observed_at=f"{published_on}T09:00:00+03:00",
         authority=authority,
@@ -57,6 +68,10 @@ def candidate(
     )
 
 
+def market_evidence():
+    return tuple(evidence(source=source) for source in _SOURCE_URLS)
+
+
 def strong_candidates():
     return (
         candidate("EFID", 84, "Consumer"),
@@ -72,6 +87,7 @@ def test_initial_plan_keeps_cash_and_equal_weights_four_names():
         analysis_date=date(2026, 9, 14),
         cash_egp=10_000,
         candidates=strong_candidates(),
+        market_evidence=market_evidence(),
     )
     plan = build_portfolio_plan(snapshot)
     buys = [item for item in plan.actions if item.action is AdvisoryAction.BUY]
@@ -93,6 +109,7 @@ def test_plan_refuses_to_force_investment_with_too_few_candidates():
         analysis_date=date(2026, 9, 14),
         cash_egp=10_000,
         candidates=strong_candidates()[:3],
+        market_evidence=market_evidence(),
     )
     plan = build_portfolio_plan(snapshot)
 
@@ -131,6 +148,7 @@ def test_missing_switch_cost_suppresses_replacement_and_preserves_budget():
             PortfolioPosition(ticker="TMGH", units=10, current_value_egp=2_000),
         ),
         candidates=(*strong_candidates(), weak),
+        market_evidence=market_evidence(),
     )
     plan = build_portfolio_plan(snapshot)
 
@@ -151,6 +169,7 @@ def test_costed_replacement_names_the_stronger_security():
             PortfolioPosition(ticker="TMGH", units=10, current_value_egp=2_000),
         ),
         candidates=(*strong_candidates(), weak),
+        market_evidence=market_evidence(),
         estimated_switch_cost_pct=0.01,
     )
     plan = build_portfolio_plan(snapshot)
@@ -171,6 +190,7 @@ def test_stale_low_score_position_is_held_not_sold():
             PortfolioPosition(ticker="TMGH", units=10, current_value_egp=2_000),
         ),
         candidates=(*strong_candidates(), stale_weak),
+        market_evidence=market_evidence(),
         estimated_switch_cost_pct=0.01,
     )
     plan = build_portfolio_plan(snapshot)
