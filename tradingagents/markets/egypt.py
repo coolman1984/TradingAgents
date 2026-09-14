@@ -62,3 +62,11 @@ def is_egx_ticker(raw: str) -> bool:
     except ValueError:
         return False
     return ticker.endswith(_EGX_SUFFIX) and not ticker.startswith("^")
+
+
+def normalize_egx_equity_ticker(raw: str) -> str:
+    """Return a canonical EGX equity ticker and reject benchmark symbols."""
+    ticker = normalize_egx_ticker(raw)
+    if not is_egx_ticker(ticker):
+        raise ValueError(f"EGX equity ticker is required: {raw!r}")
+    return ticker
