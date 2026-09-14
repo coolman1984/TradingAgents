@@ -3,7 +3,7 @@ import pytest
 from tradingagents.markets.egypt import (
     EGYPT_MARKET,
     is_egx_ticker,
-    normalize_egx_ticker,
+    normalize_egx_equity_ticker,\n    normalize_egx_ticker,
 )
 
 
@@ -36,3 +36,10 @@ def test_egypt_profile_is_advisory_only():
     assert EGYPT_MARKET.sharia_benchmark == "^SHARIAH.CA"
     assert is_egx_ticker("COMI")
     assert not is_egx_ticker("^CASE30")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("ticker", ["^CASE30", "^SHARIAH.CA"])
+def test_equity_normalizer_rejects_indices(ticker):
+    with pytest.raises(ValueError, match="equity ticker"):
+        normalize_egx_equity_ticker(ticker)
