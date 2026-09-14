@@ -6,9 +6,9 @@ future information.  These models contain no broker or order fields.
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timezone
 from enum import Enum
-import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
