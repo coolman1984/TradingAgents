@@ -1,10 +1,10 @@
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from typer.testing import CliRunner
 
 from cli.egx_portfolio import app
-from tradingagents.portfolio.models import (
+from tradingagents.portfolio.mandate import ShariaTier\nfrom tradingagents.portfolio.models import (
     AdvisoryAction,
     AnalysisDimension,
     DimensionScore,
@@ -25,10 +25,10 @@ runner = CliRunner()
 
 def blocked_snapshot() -> PortfolioSnapshot:
     evidence = EvidenceRef(
-        source="egx_disclosures",
+        source="egx_sharia_constituents",
         url="https://beta.egx.com.eg/ar/media-center",
         published_on=date(2026, 9, 1),
-        observed_at=datetime(2026, 9, 1, 12),
+        observed_at=datetime(2026, 9, 1, 12, tzinfo=timezone.utc),
         authority="official",
     )
     candidate = SecurityAssessment(
