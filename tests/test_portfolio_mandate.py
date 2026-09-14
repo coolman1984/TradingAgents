@@ -97,3 +97,66 @@ def test_replace_rejects_same_security_in_short_and_canonical_forms():
             evidence=("dated disclosure",),
             replacement_ticker="EFID.CA",
         )
+
+
+
+@pytest.mark.unit
+def test_sector_concentration_is_case_insensitive():
+    positions = [
+        allocation("COMI", 0.25, "Banking"),
+        allocation("FAIT", 0.20, " banking "),
+        allocation("SWDY", 0.175, "Industrials"),
+        allocation("EFID", 0.175, "Consumer"),
+    ]
+    issues = validate_portfolio(positions, 0.20)
+    assert any("45.00%" in issue for issue in issues)
+
+
+@pytest.mark.unit
+def test_sharia_as_of_must_be_a_real_iso_date():
+    invalid = allocation("EFID", 0.20)
+    invalid = Allocation(
+        ticker=invalid.ticker,
+        weight=invalid.weight,
+        sector=invalid.sector,
+        sharia_tier=invalid.sharia_tier,
+        sharia_source=invalid.sharia_source,
+        sharia_as_of="unknown",
+    )
+    issues = validate_portfolio(
+        [
+            invalid,
+            allocation("SWDY", 0.20),
+            allocation("ORAS", 0.20),
+            allocation("ABUK", 0.20),
+        ],
+        0.20,
+    )
+    assert any("ISO date" in issue for issue in issues)
+
+
+@pytest.mark.unit
+def test_recommendation_rejects_blank_evidence():
+    with pytest.raises(ValueError, match="non-blank"):
+        PortfolioRecommendation(
+            ticker="EFID",
+            action=PortfolioAction.HOLD,
+            target_weight=0.20,
+            confidence=0.80,
+            rationale="Thesis remains valid.",
+            evidence=("  ",),
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("ticker", ["^CASE30", "^SHARIAH.CA"])
+def test_recommendation_rejects_index_as_security(ticker):
+    with pytest.raises(ValueError, match="equity ticker"):
+        PortfolioRecommendation(
+            ticker=ticker,
+            action=PortfolioAction.BUY,
+            target_weight=0.20,
+            confidence=0.80,
+            rationale="Indices are benchmarks, not securities.",
+            evidence=("dated disclosure",),
+        )
