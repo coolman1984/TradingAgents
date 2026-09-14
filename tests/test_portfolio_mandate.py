@@ -83,3 +83,17 @@ def test_default_mandate_matches_product_scope():
     assert mandate.monthly_contribution_egp == 1_000
     assert mandate.max_drawdown == 0.20
     assert mandate.advisory_only is True
+
+
+@pytest.mark.unit
+def test_replace_rejects_same_security_in_short_and_canonical_forms():
+    with pytest.raises(ValueError, match="different security"):
+        PortfolioRecommendation(
+            ticker="EFID",
+            action=PortfolioAction.REPLACE,
+            target_weight=0.20,
+            confidence=0.80,
+            rationale="Replacement must be genuinely different.",
+            evidence=("dated disclosure",),
+            replacement_ticker="EFID.CA",
+        )
