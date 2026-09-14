@@ -69,7 +69,13 @@ def candidate(
 
 
 def market_evidence():
-    return tuple(evidence(source=source) for source in _SOURCE_URLS)
+    return tuple(
+        evidence(
+            source=source,
+            published_on="2026-09-14" if source == "egx_prices" else "2026-09-01",
+        )
+        for source in _SOURCE_URLS
+    )
 
 
 def strong_candidates():
