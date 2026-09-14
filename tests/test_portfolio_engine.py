@@ -15,7 +15,11 @@ from tradingagents.portfolio.models import (
 )
 
 
-def evidence(\n    published_on="2026-09-01",\n    authority="official",\n    source="egx_disclosures",\n):
+def evidence(
+    published_on="2026-09-01",
+    authority="official",
+    source="egx_disclosures",
+):
     return EvidenceRef(
         source=source,
         url="https://www.egx.com.eg/example",
