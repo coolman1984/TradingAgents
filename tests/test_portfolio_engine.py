@@ -31,6 +31,7 @@ def evidence(
     published_on="2026-09-01",
     authority="official",
     source="egx_disclosures",
+    subjects=(),
 ):
     return EvidenceRef(
         source=source,
@@ -38,6 +39,7 @@ def evidence(
         published_on=published_on,
         observed_at=f"{published_on}T09:00:00+03:00",
         authority=authority,
+        subjects=subjects,
         content_hash="0" * 64,
     )
 
@@ -55,7 +57,7 @@ def candidate(
             score=score,
             confidence=0.90,
             as_of=as_of,
-            evidence=(evidence(published_on=as_of),),
+            evidence=(evidence(published_on=as_of, subjects=(ticker,)),),
         )
         for dimension in AnalysisDimension
     )
@@ -65,11 +67,12 @@ def candidate(
         sector=sector,
         sharia_tier=tier,
         sharia_evidence=(
-            evidence(source="egx_sharia_constituents")
+            evidence(source="egx_sharia_constituents", subjects=(ticker,))
             if tier is ShariaTier.OFFICIAL_INDEX
             else evidence(
                 source="independent_sharia_review",
                 authority="secondary",
+                subjects=(ticker,),
             )
         ),
         dimensions=dimensions,
