@@ -7,7 +7,7 @@ software never invents a fatwa or turns a vague model opinion into eligibility.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass\nfrom datetime import date
 from enum import Enum
 from math import isclose
 from typing import Iterable
@@ -127,8 +127,15 @@ def validate_portfolio(
             issues.append(
                 f"{item.ticker}: dated Sharia evidence and source are required"
             )
+        else:
+            try:
+                date.fromisoformat(item.sharia_as_of)
+            except ValueError:
+                issues.append(
+                    f"{item.ticker}: Sharia as-of must be an ISO date (YYYY-MM-DD)"
+                )
 
-        sector = item.sector.strip() or "UNKNOWN"
+        sector = " ".join(item.sector.split()).casefold() or "unknown"
         sector_weights[sector] += item.weight
 
     for sector, weight in sector_weights.items():
