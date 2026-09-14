@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 from typer.testing import CliRunner
 
 from cli.egx_portfolio import app
+from tradingagents.markets.egypt_sources import EgyptSourceKey
 from tradingagents.portfolio.evidence_store import EvidenceDocument, EvidenceStore
 from tradingagents.portfolio.mandate import ShariaTier
 from tradingagents.portfolio.models import (
@@ -93,7 +94,7 @@ def test_cli_writes_auditable_blocked_plan_and_returns_code_two(tmp_path):
     database = tmp_path / "evidence.sqlite3"
     stored = EvidenceStore(database).add(
         EvidenceDocument(
-            source_key="egx_sharia_constituents",
+            source_key=EgyptSourceKey.EGX_SHARIA_CONSTITUENTS,
             source_url="https://beta.egx.com.eg/ar/media-center",
             published_on=date(2026, 9, 1),
             observed_at=datetime(2026, 9, 1, 12, tzinfo=timezone.utc),
