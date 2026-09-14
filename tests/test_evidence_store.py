@@ -150,3 +150,21 @@ def test_reimport_backfills_subjects_in_legacy_database(tmp_path):
 
     assert stored.record_id == 1
     assert stored.reference.subjects == ("COMI.CA",)
+
+
+
+def test_reimport_preserves_earliest_knowledge_time(tmp_path):
+    store = EvidenceStore(tmp_path / "evidence.sqlite3")
+    first = store.add(document())
+    later = store.add(
+        document(observed_at=datetime(2026, 9, 3, 9, tzinfo=timezone.utc))
+    )
+
+    assert later.record_id == first.record_id
+    assert later.reference.observed_at == datetime(
+        2026,
+        9,
+        2,
+        9,
+        tzinfo=timezone.utc,
+    )
