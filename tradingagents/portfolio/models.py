@@ -7,7 +7,7 @@ future information.  These models contain no broker or order fields.
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from enum import Enum
+from enum import Enum\nimport re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -36,6 +36,16 @@ class EvidenceRef(StrictModel):
     observed_at: datetime
     authority: Literal["official", "company", "market_data", "secondary", "manual"]
     content_hash: str | None = None
+
+    @field_validator("content_hash")
+    @classmethod
+    def validate_content_hash(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.lower()
+        if re.fullmatch(r"[0-9a-f]{64}", normalized) is None:
+            raise ValueError("content_hash must be a SHA-256 hexadecimal digest")
+        return normalized
 
     @field_validator("url")
     @classmethod
