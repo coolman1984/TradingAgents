@@ -10,10 +10,14 @@ from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from tradingagents.markets.egypt import normalize_egx_equity_ticker
 from tradingagents.portfolio.mandate import ShariaTier
+
+
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 class AnalysisDimension(str, Enum):
@@ -25,7 +29,7 @@ class AnalysisDimension(str, Enum):
     RISK = "risk"
 
 
-class EvidenceRef(BaseModel):
+class EvidenceRef(StrictModel):
     source: str = Field(min_length=1)
     url: str = Field(min_length=1)
     published_on: date
@@ -54,7 +58,7 @@ class EvidenceRef(BaseModel):
         return self
 
 
-class DimensionScore(BaseModel):
+class DimensionScore(StrictModel):
     dimension: AnalysisDimension
     score: float = Field(ge=0, le=100)
     confidence: float = Field(ge=0, le=1)
@@ -62,7 +66,7 @@ class DimensionScore(BaseModel):
     evidence: tuple[EvidenceRef, ...] = Field(min_length=1)
 
 
-class SecurityAssessment(BaseModel):
+class SecurityAssessment(StrictModel):
     ticker: str
     company_name: str = Field(min_length=1)
     sector: str = Field(min_length=1)
@@ -88,7 +92,7 @@ class SecurityAssessment(BaseModel):
         return self
 
 
-class PortfolioPosition(BaseModel):
+class PortfolioPosition(StrictModel):
     ticker: str
     units: float = Field(ge=0)
     current_value_egp: float = Field(ge=0)
@@ -99,7 +103,7 @@ class PortfolioPosition(BaseModel):
         return normalize_egx_equity_ticker(value)
 
 
-class PortfolioSnapshot(BaseModel):
+class PortfolioSnapshot(StrictModel):
     analysis_date: date
     cash_egp: float = Field(ge=0)
     positions: tuple[PortfolioPosition, ...] = ()
@@ -128,7 +132,7 @@ class AdvisoryAction(str, Enum):
     KEEP_CASH = "keep_cash"
 
 
-class PlanAction(BaseModel):
+class PlanAction(StrictModel):
     ticker: str | None
     action: AdvisoryAction
     target_weight: float = Field(ge=0, le=1)
@@ -163,7 +167,7 @@ class PlanAction(BaseModel):
         return self
 
 
-class PortfolioPlan(BaseModel):
+class PortfolioPlan(StrictModel):
     analysis_date: date
     advisory_only: Literal[True] = True
     investable_value_egp: float = Field(ge=0)
