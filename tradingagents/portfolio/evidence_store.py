@@ -164,6 +164,35 @@ class EvidenceStore:
             raise RuntimeError("Evidence write did not produce a readable record")
         return self._from_row(row)
 
+    def require(self, reference: EvidenceRef) -> StoredEvidence:
+        """Resolve an exact reference and re-check its stored payload integrity."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, source_key, source_url, published_on, observed_at,
+                       authority, subjects_json, content_hash, payload_json
+                FROM evidence
+                WHERE source_key = ? AND source_url = ? AND published_on = ?
+                      AND content_hash = ?
+                ORDER BY observed_at, id
+                """,
+                (
+                    reference.source,
+                    reference.url,
+                    reference.published_on.isoformat(),
+                    reference.content_hash,
+                ),
+            ).fetchall()
+
+        for row in rows:
+            stored = self._from_row(row)
+            if stored.reference == reference:
+                return stored
+        raise ValueError(
+            f"Evidence reference is not present in the verified store: "
+            f"{reference.source} {reference.content_hash or '<no hash>'}"
+        )
+
     def known_at(
         self,
         knowledge_time: datetime,
