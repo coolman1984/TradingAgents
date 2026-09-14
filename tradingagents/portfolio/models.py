@@ -36,6 +36,7 @@ class EvidenceRef(StrictModel):
     published_on: date
     observed_at: datetime
     authority: Literal["official", "company", "market_data", "secondary", "manual"]
+    subjects: tuple[str, ...] = ()
     content_hash: str | None = None
 
     @field_validator("source")
@@ -44,6 +45,14 @@ class EvidenceRef(StrictModel):
         normalized = value.strip()
         if not normalized:
             raise ValueError("evidence source cannot be blank")
+        return normalized
+
+    @field_validator("subjects")
+    @classmethod
+    def normalize_subjects(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(normalize_egx_equity_ticker(item) for item in value)
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("evidence subjects contain duplicate tickers")
         return normalized
 
     @field_validator("content_hash")
@@ -116,6 +125,23 @@ class SecurityAssessment(StrictModel):
             and self.sharia_evidence.authority != "official"
         ):
             raise ValueError("official-index classification requires official evidence")
+        if self.ticker not in self.sharia_evidence.subjects:
+            raise ValueError("Sharia evidence must identify the assessed security")
+
+        security_specific = {
+            AnalysisDimension.FUNDAMENTAL,
+            AnalysisDimension.VALUATION,
+            AnalysisDimension.TECHNICAL,
+            AnalysisDimension.LIQUIDITY,
+        }
+        for item in self.dimensions:
+            if item.dimension in security_specific and not any(
+                self.ticker in evidence.subjects for evidence in item.evidence
+            ):
+                raise ValueError(
+                    f"{item.dimension.value} evidence must identify "
+                    f"{self.ticker}"
+                )
         return self
 
 
