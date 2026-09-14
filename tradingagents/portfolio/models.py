@@ -40,6 +40,12 @@ class EvidenceRef(BaseModel):
             raise ValueError("evidence URL must use https:// or file://")
         return value
 
+    @model_validator(mode="after")
+    def observed_after_publication(self):
+        if self.observed_at.date() < self.published_on:
+            raise ValueError("evidence cannot be observed before it is published")
+        return self
+
 
 class DimensionScore(BaseModel):
     dimension: AnalysisDimension
@@ -123,6 +129,30 @@ class PlanAction(BaseModel):
     confidence: float = Field(ge=0, le=1)
     reasons: tuple[str, ...] = Field(min_length=1)
     replacement_ticker: str | None = None
+
+    @model_validator(mode="after")
+    def action_shape(self):
+        if self.action is AdvisoryAction.KEEP_CASH:
+            if self.ticker is not None or self.replacement_ticker is not None:
+                raise ValueError("keep-cash action cannot name a security")
+            return self
+
+        if self.ticker is None:
+            raise ValueError("security action requires a ticker")
+        self.ticker = normalize_egx_ticker(self.ticker)
+
+        if self.action is AdvisoryAction.REPLACE:
+            if self.replacement_ticker is None:
+                raise ValueError("replace action requires replacement_ticker")
+            self.replacement_ticker = normalize_egx_ticker(self.replacement_ticker)
+            if self.replacement_ticker == self.ticker:
+                raise ValueError("replacement must be a different security")
+        elif self.replacement_ticker is not None:
+            raise ValueError("replacement_ticker is only valid for replace")
+
+        if self.action is AdvisoryAction.SELL and self.target_weight != 0:
+            raise ValueError("sell action must target zero weight")
+        return self
 
 
 class PortfolioPlan(BaseModel):
