@@ -167,7 +167,27 @@ class PortfolioPlan(BaseModel):
     advisory_only: Literal[True] = True
     investable_value_egp: float = Field(ge=0)
     target_cash_weight: float = Field(ge=0, le=1)
-    actions: tuple[PlanAction, ...]
-    monthly_contribution_action: PlanAction
+    actions: tuple[PlanAction, ...] = Field(min_length=1)
+    monthly_contribution_egp: float = Field(ge=0)
+    monthly_contribution_actions: tuple[PlanAction, ...] = Field(min_length=1)
     blocked_reasons: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_budget(self):
+        target_weight = self.target_cash_weight + sum(
+            action.target_weight for action in self.actions if action.ticker is not None
+        )
+        if abs(target_weight - 1.0) > 1e-6:
+            raise ValueError(
+                f"portfolio target weights must total 100%, got {target_weight:.6f}"
+            )
+
+        monthly_values = [
+            action.value_change_egp for action in self.monthly_contribution_actions
+        ]
+        if any(value < 0 for value in monthly_values):
+            raise ValueError("monthly contribution actions cannot withdraw money")
+        if abs(sum(monthly_values) - self.monthly_contribution_egp) > 0.01:
+            raise ValueError("monthly contribution actions must allocate the full amount")
+        return self
