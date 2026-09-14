@@ -81,6 +81,9 @@ def test_initial_plan_keeps_cash_and_equal_weights_four_names():
     assert all(item.target_weight == pytest.approx(0.20) for item in buys)
     assert sum(item.value_change_egp for item in buys) == pytest.approx(8_000)
     assert plan.target_cash_weight == pytest.approx(0.20)
+    assert sum(
+        item.value_change_egp for item in plan.monthly_contribution_actions
+    ) == pytest.approx(1_000)
     assert plan.advisory_only is True
 
 
