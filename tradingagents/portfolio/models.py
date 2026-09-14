@@ -38,6 +38,14 @@ class EvidenceRef(StrictModel):
     authority: Literal["official", "company", "market_data", "secondary", "manual"]
     content_hash: str | None = None
 
+    @field_validator("source")
+    @classmethod
+    def normalize_source(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("evidence source cannot be blank")
+        return normalized
+
     @field_validator("content_hash")
     @classmethod
     def validate_content_hash(cls, value: str | None) -> str | None:
@@ -84,6 +92,14 @@ class SecurityAssessment(StrictModel):
     sharia_tier: ShariaTier
     sharia_evidence: EvidenceRef
     dimensions: tuple[DimensionScore, ...] = Field(min_length=1)
+
+    @field_validator("company_name", "sector")
+    @classmethod
+    def normalize_labels(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("company name and sector cannot be blank")
+        return normalized
 
     @field_validator("ticker")
     @classmethod
@@ -152,6 +168,14 @@ class PlanAction(StrictModel):
     confidence: float = Field(ge=0, le=1)
     reasons: tuple[str, ...] = Field(min_length=1)
     replacement_ticker: str | None = None
+
+    @field_validator("reasons")
+    @classmethod
+    def validate_reasons(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(reason.strip() for reason in value)
+        if any(not reason for reason in normalized):
+            raise ValueError("action reasons cannot be blank")
+        return normalized
 
     @model_validator(mode="after")
     def action_shape(self):
