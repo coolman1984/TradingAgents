@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from tradingagents.markets.egypt_sources import (
     EgyptSourceKey,
@@ -13,7 +13,7 @@ def evidence(source: str, url: str, authority: str = "official", content_hash=No
         source=source,
         url=url,
         published_on=date(2026, 9, 1),
-        observed_at=datetime(2026, 9, 1, 12),
+        observed_at=datetime(2026, 9, 1, 12, tzinfo=timezone.utc),
         authority=authority,
         content_hash=content_hash,
     )
