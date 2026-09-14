@@ -27,6 +27,18 @@ def main() -> None:
     """Evidence-first portfolio planning for Egyptian listed equities."""
 
 
+@app.command("snapshot-schema")
+def snapshot_schema() -> None:
+    """Print the strict PortfolioSnapshot JSON schema."""
+    typer.echo(
+        json.dumps(
+            PortfolioSnapshot.model_json_schema(),
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+
 @app.command("import-evidence")
 def import_evidence(
     bundle_file: Path = typer.Argument(
