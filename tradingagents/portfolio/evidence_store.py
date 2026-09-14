@@ -196,7 +196,7 @@ class EvidenceStore:
         with self._connect() as connection:
             connection.execute(
                 """
-                INSERT OR IGNORE INTO evidence (
+                INSERT INTO evidence (
                     source_key, source_url, published_on, observed_at,
                     authority, subjects_json, content_hash, record_hash,
                     payload_json
