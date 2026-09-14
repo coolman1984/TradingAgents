@@ -219,6 +219,7 @@ def _keep_cash_plan(
     total_value: float,
     blocked: list[str],
     warnings: list[str],
+    mandate: PortfolioMandate,
 ) -> PortfolioPlan:
     keep_cash = PlanAction(
         ticker=None,
@@ -232,7 +233,7 @@ def _keep_cash_plan(
         ticker=None,
         action=AdvisoryAction.KEEP_CASH,
         target_weight=1.0,
-        value_change_egp=DEFAULT_EGX_BALANCED_MANDATE.monthly_contribution_egp,
+        value_change_egp=mandate.monthly_contribution_egp,
         confidence=1.0,
         reasons=("Keep the monthly contribution liquid until evidence is complete",),
     )
@@ -241,7 +242,7 @@ def _keep_cash_plan(
         investable_value_egp=total_value,
         target_cash_weight=1.0,
         actions=(keep_cash,),
-        monthly_contribution_egp=DEFAULT_EGX_BALANCED_MANDATE.monthly_contribution_egp,
+        monthly_contribution_egp=mandate.monthly_contribution_egp,
         monthly_contribution_actions=(monthly_cash,),
         blocked_reasons=tuple(blocked),
         warnings=tuple(warnings),
@@ -278,7 +279,7 @@ def build_portfolio_plan(
             f"Only {len(selected)} eligible diversified candidates; "
             f"{mandate.min_positions} are required"
         )
-        return _keep_cash_plan(snapshot, total_value, blocked, warnings)
+        return _keep_cash_plan(snapshot, total_value, blocked, warnings, mandate)
 
     # Decide which existing positions are locked, selected, sold, or replaced
     # before calculating targets.  This prevents buy actions from spending cash
