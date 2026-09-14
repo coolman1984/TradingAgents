@@ -68,7 +68,8 @@ def keep_cash_plan() -> PortfolioPlan:
         investable_value_egp=10_000,
         target_cash_weight=1,
         actions=(action,),
-        monthly_contribution_action=action,
+        monthly_contribution_egp=1_000,
+        monthly_contribution_actions=(action,),
         blocked_reasons=("Insufficient evidence",),
     )
 
