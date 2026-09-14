@@ -37,6 +37,12 @@ _DIMENSION_WEIGHTS = {
     AnalysisDimension.LIQUIDITY: 0.15,
     AnalysisDimension.RISK: 0.15,
 }
+_SHARIA_PRIORITY = {
+    ShariaTier.OFFICIAL_INDEX: 2,
+    ShariaTier.INDEPENDENTLY_REVIEWED: 1,
+    ShariaTier.REVIEW_REQUIRED: 0,
+    ShariaTier.EXCLUDED: -1,
+}
 _REQUIRED_DIMENSIONS = frozenset(
     {
         AnalysisDimension.FUNDAMENTAL,
@@ -202,7 +208,12 @@ def _select_diversified(
 ) -> list[ScoredSecurity]:
     ranked = sorted(
         (item for item in scored if item.eligible and item.score is not None),
-        key=lambda item: (item.score, item.confidence, item.assessment.ticker),
+        key=lambda item: (
+            _SHARIA_PRIORITY[item.assessment.sharia_tier],
+            item.score,
+            item.confidence,
+            item.assessment.ticker,
+        ),
         reverse=True,
     )
     selected: list[ScoredSecurity] = []
