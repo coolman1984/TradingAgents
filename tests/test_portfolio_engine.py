@@ -23,6 +23,7 @@ _SOURCE_URLS = {
     "cbe_macro": "https://www.cbe.org.eg/rates",
     "capmas_inflation": "https://www.capmas.gov.eg/inflation",
     "fra_rules": "https://www.fra.gov.eg/rules",
+    "independent_sharia_review": "file:///reviews/sharia-review.json",
 }
 
 
@@ -63,7 +64,14 @@ def candidate(
         company_name=ticker,
         sector=sector,
         sharia_tier=tier,
-        sharia_evidence=evidence(source="egx_sharia_constituents"),
+        sharia_evidence=(
+            evidence(source="egx_sharia_constituents")
+            if tier is ShariaTier.OFFICIAL_INDEX
+            else evidence(
+                source="independent_sharia_review",
+                authority="secondary",
+            )
+        ),
         dimensions=dimensions,
     )
 
@@ -75,6 +83,7 @@ def market_evidence():
             published_on="2026-09-14" if source == "egx_prices" else "2026-09-01",
         )
         for source in _SOURCE_URLS
+        if source != "independent_sharia_review"
     )
 
 
@@ -217,3 +226,35 @@ def test_official_index_tier_requires_official_evidence():
             sharia_evidence=evidence(authority="secondary"),
             dimensions=candidate("SWDY").dimensions,
         )
+
+
+@pytest.mark.unit
+def test_official_sharia_tier_ranks_before_independent_review():
+    candidates = (
+        candidate("EFID", 70, "Consumer"),
+        candidate("SWDY", 69, "Industrials"),
+        candidate("ORAS", 68, "Construction"),
+        candidate("ABUK", 67, "Materials"),
+        candidate(
+            "TMGH",
+            99,
+            "Real Estate",
+            tier=ShariaTier.INDEPENDENTLY_REVIEWED,
+        ),
+    )
+    plan = build_portfolio_plan(
+        PortfolioSnapshot(
+            analysis_date=date(2026, 9, 14),
+            cash_egp=10_000,
+            candidates=candidates,
+            market_evidence=market_evidence(),
+        )
+    )
+
+    bought = {
+        action.ticker
+        for action in plan.actions
+        if action.action is AdvisoryAction.BUY
+    }
+    assert "TMGH.CA" not in bought
+    assert bought == {"EFID.CA", "SWDY.CA", "ORAS.CA", "ABUK.CA"}
