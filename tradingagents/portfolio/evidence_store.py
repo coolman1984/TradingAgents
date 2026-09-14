@@ -172,28 +172,62 @@ class EvidenceStore:
         if issues:
             raise ValueError("; ".join(issues))
 
-        subjects_json = json.dumps(reference.subjects)
-        calculated_record_hash = record_hash(
-            source_key=document.source_key.value,
-            source_url=reference.url,
-            published_on=reference.published_on.isoformat(),
-            observed_at=reference.observed_at.isoformat(),
-            authority=reference.authority,
-            subjects_json=subjects_json,
-            content_hash=calculated_hash,
-        )
-        values = (
+        identity = (
             document.source_key.value,
             reference.url,
             reference.published_on.isoformat(),
-            reference.observed_at.isoformat(),
-            reference.authority,
-            subjects_json,
             calculated_hash,
-            calculated_record_hash,
-            payload_json,
         )
         with self._connect() as connection:
+            existing_row = connection.execute(
+                """
+                SELECT id, source_key, source_url, published_on, observed_at,
+                       authority, subjects_json, content_hash, record_hash,
+                       payload_json
+                FROM evidence
+                WHERE source_key = ? AND source_url = ? AND published_on = ?
+                      AND content_hash = ?
+                """,
+                identity,
+            ).fetchone()
+            if existing_row is not None:
+                existing = self._from_row(existing_row)
+                earliest_observation = min(
+                    existing.reference.observed_at,
+                    reference.observed_at,
+                )
+                subjects = reference.subjects or existing.reference.subjects
+                reference = EvidenceRef(
+                    source=reference.source,
+                    url=reference.url,
+                    published_on=reference.published_on,
+                    observed_at=earliest_observation,
+                    authority=reference.authority,
+                    subjects=subjects,
+                    content_hash=reference.content_hash,
+                )
+
+            subjects_json = json.dumps(reference.subjects)
+            calculated_record_hash = record_hash(
+                source_key=document.source_key.value,
+                source_url=reference.url,
+                published_on=reference.published_on.isoformat(),
+                observed_at=reference.observed_at.isoformat(),
+                authority=reference.authority,
+                subjects_json=subjects_json,
+                content_hash=calculated_hash,
+            )
+            values = (
+                document.source_key.value,
+                reference.url,
+                reference.published_on.isoformat(),
+                reference.observed_at.isoformat(),
+                reference.authority,
+                subjects_json,
+                calculated_hash,
+                calculated_record_hash,
+                payload_json,
+            )
             connection.execute(
                 """
                 INSERT INTO evidence (
@@ -220,12 +254,7 @@ class EvidenceStore:
                 WHERE source_key = ? AND source_url = ? AND published_on = ?
                       AND content_hash = ?
                 """,
-                (
-                    document.source_key.value,
-                    document.source_url,
-                    document.published_on.isoformat(),
-                    calculated_hash,
-                ),
+                identity,
             ).fetchone()
 
         if row is None:
