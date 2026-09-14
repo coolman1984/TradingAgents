@@ -6,7 +6,7 @@ import hashlib
 import json
 import sqlite3
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -47,6 +47,12 @@ def canonical_payload(payload: dict) -> str:
 
 def payload_hash(payload_json: str) -> str:
     return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("knowledge timestamps must include a timezone")
+    return value.astimezone(timezone.utc)
 
 
 class EvidenceStore:
@@ -108,10 +114,10 @@ class EvidenceStore:
 
         values = (
             document.source_key.value,
-            document.source_url,
-            document.published_on.isoformat(),
-            document.observed_at.isoformat(),
-            document.authority,
+            reference.url,
+            reference.published_on.isoformat(),
+            reference.observed_at.isoformat(),
+            reference.authority,
             calculated_hash,
             payload_json,
         )
@@ -156,7 +162,7 @@ class EvidenceStore:
             FROM evidence
             WHERE observed_at <= ?
         """
-        parameters: list[str] = [knowledge_time.isoformat()]
+        parameters: list[str] = [_as_utc(knowledge_time).isoformat()]
         if source_key is not None:
             query += " AND source_key = ?"
             parameters.append(source_key.value)
