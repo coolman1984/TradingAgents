@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from tradingagents.markets.egypt import normalize_egx_ticker
+from tradingagents.markets.egypt import normalize_egx_equity_ticker
 
 
 class PortfolioAction(str, Enum):
@@ -28,21 +28,21 @@ class PortfolioRecommendation:
     replacement_ticker: str | None = None
 
     def __post_init__(self) -> None:
-        normalize_egx_ticker(self.ticker)
+        normalize_egx_equity_ticker(self.ticker)
         if not 0 <= self.target_weight <= 1:
             raise ValueError("target_weight must be between 0 and 1")
         if not 0 <= self.confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
         if not self.rationale.strip():
             raise ValueError("rationale is required")
-        if not self.evidence:
-            raise ValueError("at least one evidence reference is required")
+        if not self.evidence or any(not item.strip() for item in self.evidence):
+            raise ValueError("at least one non-blank evidence reference is required")
 
         if self.action is PortfolioAction.REPLACE:
             if not self.replacement_ticker:
                 raise ValueError("replacement_ticker is required for replace")
-            normalize_egx_ticker(self.replacement_ticker)
-            if normalize_egx_ticker(self.replacement_ticker) == normalize_egx_ticker(self.ticker):
+            normalize_egx_equity_ticker(self.replacement_ticker)
+            if normalize_egx_equity_ticker(self.replacement_ticker) == normalize_egx_equity_ticker(self.ticker):
                 raise ValueError("replacement must be a different security")
         elif self.replacement_ticker is not None:
             raise ValueError("replacement_ticker is only valid for replace")
