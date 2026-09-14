@@ -47,6 +47,7 @@ bedrock = [
 
 [project.scripts]
 tradingagents = "cli.main:app"
+egx-portfolio = "cli.egx_portfolio:app"
 
 [tool.setuptools.packages.find]
 include = ["tradingagents*", "cli*"]
