@@ -6,7 +6,7 @@ future information.  These models contain no broker or order fields.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Literal
 
@@ -39,6 +39,13 @@ class EvidenceRef(BaseModel):
         if not (value.startswith("https://") or value.startswith("file://")):
             raise ValueError("evidence URL must use https:// or file://")
         return value
+
+    @field_validator("observed_at")
+    @classmethod
+    def normalize_observed_at(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("observed_at must include a timezone")
+        return value.astimezone(timezone.utc)
 
     @model_validator(mode="after")
     def observed_after_publication(self):
