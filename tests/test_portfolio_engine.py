@@ -15,9 +15,9 @@ from tradingagents.portfolio.models import (
 )
 
 
-def evidence(published_on="2026-09-01", authority="official"):
+def evidence(\n    published_on="2026-09-01",\n    authority="official",\n    source="egx_disclosures",\n):
     return EvidenceRef(
-        source="Egyptian Exchange",
+        source=source,
         url="https://www.egx.com.eg/example",
         published_on=published_on,
         observed_at=f"{published_on}T09:00:00+03:00",
@@ -48,7 +48,7 @@ def candidate(
         company_name=ticker,
         sector=sector,
         sharia_tier=tier,
-        sharia_evidence=evidence(),
+        sharia_evidence=evidence(source="egx_sharia_constituents"),
         dimensions=dimensions,
     )
 
