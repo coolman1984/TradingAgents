@@ -44,6 +44,7 @@ class ScoredSecurity:
     assessment: SecurityAssessment
     score: float | None
     confidence: float
+    decision_ready: bool
     eligible: bool
     issues: tuple[str, ...]
 
@@ -73,11 +74,12 @@ def score_security(
     policy: EnginePolicy = DEFAULT_ENGINE_POLICY,
 ) -> ScoredSecurity:
     issues: list[str] = []
+    data_issues: list[str] = []
 
-    if assessment.sharia_as_of > analysis_date:
-        issues.append("Sharia evidence is from the future")
-    elif _days_old(assessment.sharia_as_of, analysis_date) > policy.max_sharia_age_days:
-        issues.append("Sharia classification is stale")
+    if assessment.sharia_evidence.published_on > analysis_date:
+        data_issues.append("Sharia evidence is from the future")
+    elif _days_old(assessment.sharia_evidence.published_on, analysis_date) > policy.max_sharia_age_days:
+        data_issues.append("Sharia classification is stale")
 
     if assessment.sharia_tier not in mandate.allowed_sharia_tiers:
         issues.append(f"Sharia tier {assessment.sharia_tier.value} is not buy-eligible")
@@ -86,27 +88,30 @@ def score_security(
     missing_required = _REQUIRED_DIMENSIONS - by_dimension.keys()
     if missing_required:
         labels = ", ".join(sorted(item.value for item in missing_required))
-        issues.append(f"Missing required dimensions: {labels}")
+        data_issues.append(f"Missing required dimensions: {labels}")
 
     usable = {}
     for dimension, item in by_dimension.items():
         if item.as_of > analysis_date:
-            issues.append(f"{dimension.value} assessment is from the future")
+            data_issues.append(f"{dimension.value} assessment is from the future")
             continue
         if _days_old(item.as_of, analysis_date) > policy.max_dimension_age_days:
-            issues.append(f"{dimension.value} assessment is stale")
+            data_issues.append(f"{dimension.value} assessment is stale")
             continue
         if any(ref.published_on > analysis_date for ref in item.evidence):
-            issues.append(f"{dimension.value} evidence includes a future publication")
+            data_issues.append(f"{dimension.value} evidence includes a future publication")
             continue
         usable[dimension] = item
 
     if _REQUIRED_DIMENSIONS - usable.keys():
-        issues.append("One or more required dimensions have no usable point-in-time evidence")
+        data_issues.append("One or more required dimensions have no usable point-in-time evidence")
 
     available_weight = sum(_DIMENSION_WEIGHTS[key] for key in usable)
+    issues.extend(data_issues)
     if available_weight == 0:
-        return ScoredSecurity(assessment, None, 0.0, False, tuple(dict.fromkeys(issues)))
+        return ScoredSecurity(
+            assessment, None, 0.0, False, False, tuple(dict.fromkeys(issues))
+        )
 
     score = sum(
         item.score * _DIMENSION_WEIGHTS[dimension]
@@ -122,12 +127,15 @@ def score_security(
     )
 
     if confidence < policy.minimum_confidence:
-        issues.append(
+        data_issues.append(
             f"Confidence {confidence:.0%} is below {policy.minimum_confidence:.0%}"
         )
+    issues = list(dict.fromkeys([*issues, *data_issues]))
+    decision_ready = not data_issues
 
     eligible = (
-        not issues
+        decision_ready
+        and assessment.sharia_tier in mandate.allowed_sharia_tiers
         and score >= policy.minimum_buy_score
         and confidence >= policy.minimum_confidence
     )
@@ -138,6 +146,7 @@ def score_security(
         assessment=assessment,
         score=round(score, 2),
         confidence=round(confidence, 4),
+        decision_ready=decision_ready,
         eligible=eligible,
         issues=tuple(dict.fromkeys(issues)),
     )
