@@ -11,6 +11,8 @@ from datetime import date
 
 from tradingagents.markets.egypt_sources import (
     EgyptSourceKey,
+    evaluate_source_coverage,
+    missing_required_sources,
     validate_evidence_source,
 )
 from tradingagents.portfolio.mandate import (
@@ -97,6 +99,8 @@ def score_security(
     )
 
     sharia_date = assessment.sharia_evidence.published_on
+    if assessment.sharia_evidence.observed_at.date() > analysis_date:
+        data_issues.append("Sharia evidence was not known on analysis date")
     if sharia_date > analysis_date:
         data_issues.append("Sharia evidence is from the future")
     elif _days_old(sharia_date, analysis_date) > policy.max_sharia_age_days:
@@ -124,6 +128,11 @@ def score_security(
         if any(ref.published_on > analysis_date for ref in item.evidence):
             data_issues.append(
                 f"{dimension.value} evidence includes a future publication"
+            )
+            continue
+        if any(ref.observed_at.date() > analysis_date for ref in item.evidence):
+            data_issues.append(
+                f"{dimension.value} evidence was not known on analysis date"
             )
             continue
         source_issues = tuple(
@@ -269,6 +278,24 @@ def build_portfolio_plan(
     )
     blocked: list[str] = []
     warnings: list[str] = []
+
+    all_evidence = list(snapshot.market_evidence)
+    for assessment in snapshot.candidates:
+        all_evidence.append(assessment.sharia_evidence)
+        for dimension in assessment.dimensions:
+            all_evidence.extend(dimension.evidence)
+
+    valid_sources, coverage_issues = evaluate_source_coverage(
+        all_evidence,
+        snapshot.analysis_date,
+    )
+    warnings.extend(coverage_issues)
+    missing_sources = missing_required_sources(set(valid_sources))
+    if missing_sources:
+        blocked.append(
+            "Missing fresh required Egyptian sources: " + ", ".join(missing_sources)
+        )
+        return _keep_cash_plan(snapshot, total_value, blocked, warnings, mandate)
 
     for item in scored:
         if item.issues:
