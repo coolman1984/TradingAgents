@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 from typer.testing import CliRunner
 
 from cli.egx_portfolio import app
+from tradingagents.portfolio.evidence_store import EvidenceDocument, EvidenceStore
 from tradingagents.portfolio.mandate import ShariaTier
 from tradingagents.portfolio.models import (
     AdvisoryAction,
@@ -23,15 +24,7 @@ from tradingagents.portfolio.reporting import (
 runner = CliRunner()
 
 
-def blocked_snapshot() -> PortfolioSnapshot:
-    evidence = EvidenceRef(
-        source="egx_sharia_constituents",
-        url="https://beta.egx.com.eg/ar/media-center",
-        published_on=date(2026, 9, 1),
-        observed_at=datetime(2026, 9, 1, 12, tzinfo=timezone.utc),
-        authority="official",
-        subjects=("COMI",),
-    )
+def blocked_snapshot(evidence: EvidenceRef) -> PortfolioSnapshot:
     candidate = SecurityAssessment(
         ticker="COMI",
         company_name="Commercial International Bank",
@@ -97,11 +90,36 @@ def test_report_refuses_overwrite_without_force(tmp_path):
 
 
 def test_cli_writes_auditable_blocked_plan_and_returns_code_two(tmp_path):
+    database = tmp_path / "evidence.sqlite3"
+    stored = EvidenceStore(database).add(
+        EvidenceDocument(
+            source_key="egx_sharia_constituents",
+            source_url="https://beta.egx.com.eg/ar/media-center",
+            published_on=date(2026, 9, 1),
+            observed_at=datetime(2026, 9, 1, 12, tzinfo=timezone.utc),
+            authority="official",
+            subjects=("COMI",),
+            payload={"ticker": "COMI.CA"},
+        )
+    )
     input_path = tmp_path / "snapshot.json"
-    input_path.write_text(blocked_snapshot().model_dump_json(indent=2), encoding="utf-8")
+    input_path.write_text(
+        blocked_snapshot(stored.reference).model_dump_json(indent=2),
+        encoding="utf-8",
+    )
     output = tmp_path / "output"
 
-    result = runner.invoke(app, ["plan", str(input_path), "--output", str(output)])
+    result = runner.invoke(
+        app,
+        [
+            "plan",
+            str(input_path),
+            "--output",
+            str(output),
+            "--database",
+            str(database),
+        ],
+    )
 
     assert result.exit_code == 2
     assert (output / "portfolio_plan.json").exists()
@@ -118,3 +136,34 @@ def test_cli_rejects_invalid_json(tmp_path):
 
     assert result.exit_code == 1
     assert "Input or report error" in result.output
+
+
+
+def test_cli_rejects_fabricated_snapshot_hash(tmp_path):
+    evidence = EvidenceRef(
+        source="egx_sharia_constituents",
+        url="https://beta.egx.com.eg/ar/media-center",
+        published_on=date(2026, 9, 1),
+        observed_at=datetime(2026, 9, 1, 12, tzinfo=timezone.utc),
+        authority="official",
+        subjects=("COMI",),
+        content_hash="0" * 64,
+    )
+    input_path = tmp_path / "snapshot.json"
+    input_path.write_text(
+        blocked_snapshot(evidence).model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "plan",
+            str(input_path),
+            "--database",
+            str(tmp_path / "empty.sqlite3"),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "not present in the verified store" in result.output
