@@ -309,3 +309,67 @@ def test_diversification_normalizes_sector_labels():
     }
     assert len(bought & {"COMI.CA", "FAIT.CA", "QNBA.CA"}) == 2
     assert {"SWDY.CA", "EFID.CA"} <= bought
+
+
+
+@pytest.mark.unit
+def test_fresh_dimension_cannot_hide_stale_source_document():
+    assessed = candidate("EFID")
+    stale_fundamental = DimensionScore(
+        dimension=AnalysisDimension.FUNDAMENTAL,
+        score=95,
+        confidence=0.95,
+        as_of=date(2026, 9, 14),
+        evidence=(
+            evidence(
+                source="egx_financial_statements",
+                published_on="2025-01-01",
+                subjects=("EFID",),
+            ),
+        ),
+    )
+    dimensions = tuple(
+        stale_fundamental
+        if item.dimension is AnalysisDimension.FUNDAMENTAL
+        else item
+        for item in assessed.dimensions
+    )
+    assessed = assessed.model_copy(update={"dimensions": dimensions})
+
+    result = score_security(assessed, date(2026, 9, 14))
+
+    assert result.decision_ready is False
+    assert any("stale" in issue for issue in result.issues)
+
+
+@pytest.mark.unit
+def test_locked_holding_is_included_in_sector_concentration():
+    locked = candidate("QNBA", 20, " banks ", as_of="2025-01-01")
+    candidates = (
+        candidate("COMI", 90, "Banks"),
+        candidate("SWDY", 85, "Industrials"),
+        candidate("ORAS", 84, "Construction"),
+        candidate("ABUK", 83, "Materials"),
+        locked,
+    )
+    plan = build_portfolio_plan(
+        PortfolioSnapshot(
+            analysis_date=date(2026, 9, 14),
+            cash_egp=6_000,
+            positions=(
+                PortfolioPosition(
+                    ticker="QNBA",
+                    units=10,
+                    current_value_egp=4_000,
+                ),
+            ),
+            candidates=candidates,
+            market_evidence=market_evidence(),
+        )
+    )
+
+    assert any("target sector weight" in reason for reason in plan.blocked_reasons)
+    assert all(action.action is not AdvisoryAction.BUY for action in plan.actions)
+    assert plan.actions[0].ticker == "QNBA.CA"
+    assert plan.actions[0].action is AdvisoryAction.HOLD
+    assert plan.target_cash_weight == pytest.approx(0.60)
