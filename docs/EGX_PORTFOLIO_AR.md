@@ -61,8 +61,13 @@ egx-portfolio import-evidence evidence-bundle.json \
 أنشئ الخطة:
 
 ```bash
-egx-portfolio plan portfolio-snapshot.json --output egx-output
+egx-portfolio plan portfolio-snapshot.json \\
+  --database egx-evidence.sqlite3 \\
+  --output egx-output
 ```
+
+قبل بناء الخطة يطابق الأمر كل مرجع في ملف المحفظة بسجل موجود داخل قاعدة
+الأدلة ويعيد فحص بصمة محتواه؛ المرجع المصطنع أو غير المخزن يوقف التشغيل.
 
 يخرج الأمر ملفين:
 
