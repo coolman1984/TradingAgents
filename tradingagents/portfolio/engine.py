@@ -227,18 +227,42 @@ def _keep_cash_plan(
     warnings: list[str],
     mandate: PortfolioMandate,
 ) -> PortfolioPlan:
-    keep_cash = PlanAction(
-        ticker=None,
-        action=AdvisoryAction.KEEP_CASH,
-        target_weight=1.0,
-        value_change_egp=0,
-        confidence=1.0,
-        reasons=("Insufficient verified candidates; do not force investment",),
+    if total_value > 0 and snapshot.positions:
+        actions = tuple(
+            PlanAction(
+                ticker=position.ticker,
+                action=AdvisoryAction.HOLD,
+                target_weight=position.current_value_egp / total_value,
+                value_change_egp=0,
+                confidence=0,
+                reasons=("Recommendation blocked; preserve the existing position",),
+            )
+            for position in sorted(snapshot.positions, key=lambda item: item.ticker)
+        )
+        target_cash = snapshot.cash_egp / total_value
+    else:
+        actions = (
+            PlanAction(
+                ticker=None,
+                action=AdvisoryAction.KEEP_CASH,
+                target_weight=1.0,
+                value_change_egp=0,
+                confidence=1.0,
+                reasons=("Insufficient verified evidence; do not force investment",),
+            ),
+        )
+        target_cash = 1.0
+
+    projected_total = total_value + mandate.monthly_contribution_egp
+    projected_cash_weight = (
+        (snapshot.cash_egp + mandate.monthly_contribution_egp) / projected_total
+        if projected_total
+        else 1.0
     )
     monthly_cash = PlanAction(
         ticker=None,
         action=AdvisoryAction.KEEP_CASH,
-        target_weight=1.0,
+        target_weight=projected_cash_weight,
         value_change_egp=mandate.monthly_contribution_egp,
         confidence=1.0,
         reasons=("Keep the monthly contribution liquid until evidence is complete",),
@@ -246,12 +270,12 @@ def _keep_cash_plan(
     return PortfolioPlan(
         analysis_date=snapshot.analysis_date,
         investable_value_egp=total_value,
-        target_cash_weight=1.0,
-        actions=(keep_cash,),
+        target_cash_weight=target_cash,
+        actions=actions,
         monthly_contribution_egp=mandate.monthly_contribution_egp,
         monthly_contribution_actions=(monthly_cash,),
         blocked_reasons=tuple(blocked),
-        warnings=tuple(warnings),
+        warnings=tuple(dict.fromkeys(warnings)),
     )
 
 
@@ -372,6 +396,34 @@ def build_portfolio_plan(
         desired_cash,
         1 - locked_weight - selected_target * len(selected),
     )
+
+    target_sector_weights: dict[str, float] = {}
+    for item in selected:
+        sector = _sector_key(item.assessment.sector)
+        target_sector_weights[sector] = (
+            target_sector_weights.get(sector, 0) + selected_target
+        )
+    for ticker, (action, _) in disposition.items():
+        if action is not AdvisoryAction.HOLD or ticker in selected_by_ticker:
+            continue
+        item = by_ticker.get(ticker)
+        if item is None:
+            blocked.append(f"{ticker}: cannot validate sector concentration")
+            continue
+        sector = _sector_key(item.assessment.sector)
+        current_weight = current[ticker].current_value_egp / total_value
+        target_sector_weights[sector] = (
+            target_sector_weights.get(sector, 0) + current_weight
+        )
+
+    for sector, weight in target_sector_weights.items():
+        if weight > mandate.max_sector_weight + 1e-9:
+            blocked.append(
+                f"{sector}: target sector weight {weight:.2%} exceeds "
+                f"{mandate.max_sector_weight:.0%}"
+            )
+    if blocked:
+        return _keep_cash_plan(snapshot, total_value, blocked, warnings, mandate)
 
     actions: list[PlanAction] = []
     for ticker in sorted(current):
