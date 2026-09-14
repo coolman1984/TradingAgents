@@ -30,6 +30,7 @@ def blocked_snapshot() -> PortfolioSnapshot:
         published_on=date(2026, 9, 1),
         observed_at=datetime(2026, 9, 1, 12, tzinfo=timezone.utc),
         authority="official",
+        subjects=("COMI",),
     )
     candidate = SecurityAssessment(
         ticker="COMI",
