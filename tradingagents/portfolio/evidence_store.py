@@ -25,6 +25,7 @@ class EvidenceDocument:
     observed_at: datetime
     authority: Literal["official", "company", "market_data", "secondary", "manual"]
     payload: dict
+    subjects: tuple[str, ...] = ()
     content_hash: str | None = None
 
 
@@ -81,12 +82,22 @@ class EvidenceStore:
                     published_on TEXT NOT NULL,
                     observed_at TEXT NOT NULL,
                     authority TEXT NOT NULL,
+                    subjects_json TEXT NOT NULL DEFAULT '[]',
                     content_hash TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
                     UNIQUE(source_key, source_url, published_on, content_hash)
                 )
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(evidence)").fetchall()
+            }
+            if "subjects_json" not in columns:
+                connection.execute(
+                    "ALTER TABLE evidence "
+                    "ADD COLUMN subjects_json TEXT NOT NULL DEFAULT '[]'"
+                )
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_evidence_known_at
@@ -106,6 +117,7 @@ class EvidenceStore:
             published_on=document.published_on,
             observed_at=document.observed_at,
             authority=document.authority,
+            subjects=document.subjects,
             content_hash=calculated_hash,
         )
         issues = validate_evidence_source(reference, expected_source=document.source_key)
@@ -118,6 +130,7 @@ class EvidenceStore:
             reference.published_on.isoformat(),
             reference.observed_at.isoformat(),
             reference.authority,
+            json.dumps(reference.subjects),
             calculated_hash,
             payload_json,
         )
@@ -126,15 +139,15 @@ class EvidenceStore:
                 """
                 INSERT OR IGNORE INTO evidence (
                     source_key, source_url, published_on, observed_at,
-                    authority, content_hash, payload_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    authority, subjects_json, content_hash, payload_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 values,
             )
             row = connection.execute(
                 """
                 SELECT id, source_key, source_url, published_on, observed_at,
-                       authority, content_hash, payload_json
+                       authority, subjects_json, content_hash, payload_json
                 FROM evidence
                 WHERE source_key = ? AND source_url = ? AND published_on = ?
                       AND content_hash = ?
@@ -158,7 +171,7 @@ class EvidenceStore:
     ) -> tuple[StoredEvidence, ...]:
         query = """
             SELECT id, source_key, source_url, published_on, observed_at,
-                   authority, content_hash, payload_json
+                   authority, subjects_json, content_hash, payload_json
             FROM evidence
             WHERE observed_at <= ?
         """
@@ -185,6 +198,7 @@ class EvidenceStore:
             published_on=date.fromisoformat(row["published_on"]),
             observed_at=datetime.fromisoformat(row["observed_at"]),
             authority=row["authority"],
+            subjects=tuple(json.loads(row["subjects_json"])),
             content_hash=row["content_hash"],
         )
         return StoredEvidence(
