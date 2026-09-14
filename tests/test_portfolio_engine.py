@@ -20,7 +20,7 @@ def evidence(published_on="2026-09-01", authority="official"):
         source="Egyptian Exchange",
         url="https://www.egx.com.eg/example",
         published_on=published_on,
-        observed_at="2026-09-02T09:00:00+03:00",
+        observed_at=f"{published_on}T09:00:00+03:00",
         authority=authority,
         content_hash="fixture",
     )
