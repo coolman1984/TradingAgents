@@ -42,7 +42,7 @@ class PortfolioRecommendation:
             if not self.replacement_ticker:
                 raise ValueError("replacement_ticker is required for replace")
             normalize_egx_ticker(self.replacement_ticker)
-            if self.replacement_ticker.upper() == self.ticker.upper():
+            if normalize_egx_ticker(self.replacement_ticker) == normalize_egx_ticker(self.ticker):
                 raise ValueError("replacement must be a different security")
         elif self.replacement_ticker is not None:
             raise ValueError("replacement_ticker is only valid for replace")
