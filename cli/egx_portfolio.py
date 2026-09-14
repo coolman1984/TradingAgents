@@ -19,6 +19,11 @@ app = typer.Typer(
 )
 
 
+@app.callback()
+def main() -> None:
+    """Evidence-first portfolio planning for Egyptian listed equities."""
+
+
 @app.command()
 def plan(
     input_file: Path = typer.Argument(
