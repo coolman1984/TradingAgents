@@ -37,18 +37,8 @@ def _verify_snapshot_evidence(
         for dimension in assessment.dimensions:
             references.extend(dimension.evidence)
 
-    checked: set[tuple[str, str, str, str | None]] = set()
     for reference in references:
-        key = (
-            reference.source,
-            reference.url,
-            reference.published_on.isoformat(),
-            reference.content_hash,
-        )
-        if key in checked:
-            continue
         store.require(reference)
-        checked.add(key)
 
 
 @app.command("snapshot-schema")
