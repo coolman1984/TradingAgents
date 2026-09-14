@@ -37,6 +37,7 @@ class EvidenceBundle(BaseModel):
     published_on: date
     observed_at: datetime
     authority: Literal["official", "company", "market_data", "secondary", "manual"]
+    subjects: tuple[str, ...] = ()
     payload: dict
     content_hash: str | None = None
 
@@ -89,6 +90,7 @@ class EgyptSourceClient:
         published_on: date,
         store: EvidenceStore,
         observed_at: datetime | None = None,
+        subjects: tuple[str, ...] = (),
     ) -> StoredEvidence:
         observed = observed_at or datetime.now(timezone.utc)
         spec = EGYPT_SOURCE_REGISTRY[source_key]
@@ -159,6 +161,7 @@ class EgyptSourceClient:
                 published_on=published_on,
                 observed_at=observed,
                 authority=spec.authority,
+                subjects=subjects,
                 payload=payload,
             )
         )
@@ -189,6 +192,7 @@ def import_evidence_bundle(
             published_on=bundle.published_on,
             observed_at=bundle.observed_at,
             authority=bundle.authority,
+            subjects=bundle.subjects,
             payload=bundle.payload,
             content_hash=bundle.content_hash,
         )
