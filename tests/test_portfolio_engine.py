@@ -38,7 +38,7 @@ def evidence(
         published_on=published_on,
         observed_at=f"{published_on}T09:00:00+03:00",
         authority=authority,
-        content_hash="fixture",
+        content_hash="0" * 64,
     )
 
 
