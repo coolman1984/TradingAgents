@@ -73,16 +73,20 @@ def score_security(
     mandate: PortfolioMandate = DEFAULT_EGX_BALANCED_MANDATE,
     policy: EnginePolicy = DEFAULT_ENGINE_POLICY,
 ) -> ScoredSecurity:
-    issues: list[str] = []
+    """Score one security and keep data failures separate from policy failures."""
     data_issues: list[str] = []
+    policy_issues: list[str] = []
 
-    if assessment.sharia_evidence.published_on > analysis_date:
+    sharia_date = assessment.sharia_evidence.published_on
+    if sharia_date > analysis_date:
         data_issues.append("Sharia evidence is from the future")
-    elif _days_old(assessment.sharia_evidence.published_on, analysis_date) > policy.max_sharia_age_days:
+    elif _days_old(sharia_date, analysis_date) > policy.max_sharia_age_days:
         data_issues.append("Sharia classification is stale")
 
     if assessment.sharia_tier not in mandate.allowed_sharia_tiers:
-        issues.append(f"Sharia tier {assessment.sharia_tier.value} is not buy-eligible")
+        policy_issues.append(
+            f"Sharia tier {assessment.sharia_tier.value} is not buy-eligible"
+        )
 
     by_dimension = {item.dimension: item for item in assessment.dimensions}
     missing_required = _REQUIRED_DIMENSIONS - by_dimension.keys()
@@ -99,56 +103,58 @@ def score_security(
             data_issues.append(f"{dimension.value} assessment is stale")
             continue
         if any(ref.published_on > analysis_date for ref in item.evidence):
-            data_issues.append(f"{dimension.value} evidence includes a future publication")
+            data_issues.append(
+                f"{dimension.value} evidence includes a future publication"
+            )
             continue
         usable[dimension] = item
 
     if _REQUIRED_DIMENSIONS - usable.keys():
-        data_issues.append("One or more required dimensions have no usable point-in-time evidence")
+        data_issues.append(
+            "One or more required dimensions have no usable point-in-time evidence"
+        )
 
     available_weight = sum(_DIMENSION_WEIGHTS[key] for key in usable)
-    issues.extend(data_issues)
     if available_weight == 0:
-        return ScoredSecurity(
-            assessment, None, 0.0, False, False, tuple(dict.fromkeys(issues))
-        )
+        issues = tuple(dict.fromkeys([*data_issues, *policy_issues]))
+        return ScoredSecurity(assessment, None, 0.0, False, False, issues)
 
     score = sum(
         item.score * _DIMENSION_WEIGHTS[dimension]
         for dimension, item in usable.items()
     ) / available_weight
-    confidence = (
-        sum(
-            item.confidence * _DIMENSION_WEIGHTS[dimension]
-            for dimension, item in usable.items()
-        )
-        / available_weight
-        * available_weight
-    )
 
+    # This is the weighted confidence multiplied by coverage.  Missing optional
+    # dimensions therefore reduce confidence rather than making a sparse score
+    # look as trustworthy as a complete one.
+    confidence = sum(
+        item.confidence * _DIMENSION_WEIGHTS[dimension]
+        for dimension, item in usable.items()
+    )
     if confidence < policy.minimum_confidence:
         data_issues.append(
             f"Confidence {confidence:.0%} is below {policy.minimum_confidence:.0%}"
         )
-    issues = list(dict.fromkeys([*issues, *data_issues]))
-    decision_ready = not data_issues
 
+    if score < policy.minimum_buy_score:
+        policy_issues.append(
+            f"Score {score:.1f} is below buy threshold {policy.minimum_buy_score:.1f}"
+        )
+
+    decision_ready = not data_issues
     eligible = (
         decision_ready
         and assessment.sharia_tier in mandate.allowed_sharia_tiers
         and score >= policy.minimum_buy_score
-        and confidence >= policy.minimum_confidence
     )
-    if score < policy.minimum_buy_score:
-        issues.append(f"Score {score:.1f} is below buy threshold {policy.minimum_buy_score:.1f}")
-
+    issues = tuple(dict.fromkeys([*data_issues, *policy_issues]))
     return ScoredSecurity(
         assessment=assessment,
         score=round(score, 2),
         confidence=round(confidence, 4),
         decision_ready=decision_ready,
         eligible=eligible,
-        issues=tuple(dict.fromkeys(issues)),
+        issues=issues,
     )
 
 
@@ -164,12 +170,9 @@ def _select_diversified(
     selected: list[ScoredSecurity] = []
     sector_counts: dict[str, int] = {}
 
-    # Equal weighting is intentional for the small starting portfolio.  With
-    # four positions at 20% each, max_sector_weight=40% permits at most two
-    # names from one sector.
     target_count = mandate.min_positions
-    target_weight = (1 - mandate.max_cash_weight) / target_count
-    max_names_per_sector = max(1, int(mandate.max_sector_weight / target_weight))
+    equal_weight = (1 - mandate.max_cash_weight) / target_count
+    max_names_per_sector = max(1, int(mandate.max_sector_weight / equal_weight))
 
     for item in ranked:
         sector = item.assessment.sector
@@ -182,11 +185,37 @@ def _select_diversified(
     return selected
 
 
+def _keep_cash_plan(
+    snapshot: PortfolioSnapshot,
+    total_value: float,
+    blocked: list[str],
+    warnings: list[str],
+) -> PortfolioPlan:
+    keep_cash = PlanAction(
+        ticker=None,
+        action=AdvisoryAction.KEEP_CASH,
+        target_weight=1.0,
+        value_change_egp=0,
+        confidence=1.0,
+        reasons=("Insufficient verified candidates; do not force investment",),
+    )
+    return PortfolioPlan(
+        analysis_date=snapshot.analysis_date,
+        investable_value_egp=total_value,
+        target_cash_weight=1.0,
+        actions=(keep_cash,),
+        monthly_contribution_action=keep_cash,
+        blocked_reasons=tuple(blocked),
+        warnings=tuple(warnings),
+    )
+
+
 def build_portfolio_plan(
     snapshot: PortfolioSnapshot,
     mandate: PortfolioMandate = DEFAULT_EGX_BALANCED_MANDATE,
     policy: EnginePolicy = DEFAULT_ENGINE_POLICY,
 ) -> PortfolioPlan:
+    """Build a complete advisory plan whose target weights remain internally valid."""
     scored = [
         score_security(item, snapshot.analysis_date, mandate, policy)
         for item in snapshot.candidates
@@ -194,6 +223,7 @@ def build_portfolio_plan(
     selected = _select_diversified(scored, mandate)
     by_ticker = {item.assessment.ticker: item for item in scored}
     selected_by_ticker = {item.assessment.ticker: item for item in selected}
+    current = {item.ticker: item for item in snapshot.positions}
 
     total_value = snapshot.cash_egp + sum(
         item.current_value_egp for item in snapshot.positions
@@ -203,57 +233,93 @@ def build_portfolio_plan(
 
     for item in scored:
         if item.issues:
-            warnings.append(
-                f"{item.assessment.ticker}: " + "; ".join(item.issues)
-            )
+            warnings.append(f"{item.assessment.ticker}: " + "; ".join(item.issues))
 
     if len(selected) < mandate.min_positions:
         blocked.append(
             f"Only {len(selected)} eligible diversified candidates; "
             f"{mandate.min_positions} are required"
         )
-        keep_cash = PlanAction(
-            ticker=None,
-            action=AdvisoryAction.KEEP_CASH,
-            target_weight=1.0,
-            value_change_egp=0,
-            confidence=1.0,
-            reasons=("Insufficient verified candidates; do not force investment",),
-        )
-        return PortfolioPlan(
-            analysis_date=snapshot.analysis_date,
-            investable_value_egp=total_value,
-            target_cash_weight=1.0,
-            actions=(keep_cash,),
-            monthly_contribution_action=keep_cash,
-            blocked_reasons=tuple(blocked),
-            warnings=tuple(warnings),
-        )
+        return _keep_cash_plan(snapshot, total_value, blocked, warnings)
 
-    target_cash = mandate.max_cash_weight
-    target_weight = (1 - target_cash) / len(selected)
-    current = {item.ticker: item for item in snapshot.positions}
-    actions: list[PlanAction] = []
+    # Decide which existing positions are locked, selected, sold, or replaced
+    # before calculating targets.  This prevents buy actions from spending cash
+    # already trapped in a HOLD position.
+    disposition: dict[str, tuple[AdvisoryAction, ScoredSecurity | None]] = {}
+    replacement_pool = [
+        item for item in selected if item.assessment.ticker not in current
+    ]
+    reserved_replacements: set[str] = set()
 
-    for ticker, position in current.items():
+    for ticker in sorted(current):
         item = by_ticker.get(ticker)
-        current_weight = position.current_value_egp / total_value if total_value else 0
-
-        if item is None or item.score is None:
-            actions.append(
-                PlanAction(
-                    ticker=ticker,
-                    action=AdvisoryAction.HOLD,
-                    target_weight=current_weight,
-                    value_change_egp=0,
-                    confidence=0,
-                    reasons=("No verified current assessment; manual review required",),
-                )
-            )
+        if item is None or item.score is None or not item.decision_ready:
+            disposition[ticker] = (AdvisoryAction.HOLD, None)
+            warnings.append(f"{ticker}: position locked pending verified fresh data")
             continue
 
         if ticker in selected_by_ticker:
-            delta = target_weight - current_weight
+            disposition[ticker] = (AdvisoryAction.HOLD, None)
+            continue
+
+        if item.assessment.sharia_tier not in mandate.allowed_sharia_tiers:
+            disposition[ticker] = (AdvisoryAction.SELL, None)
+            continue
+        if item.score < policy.exit_score:
+            disposition[ticker] = (AdvisoryAction.SELL, None)
+            continue
+
+        replacement = next(
+            (
+                candidate
+                for candidate in replacement_pool
+                if candidate.assessment.ticker not in reserved_replacements
+                and candidate.score is not None
+                and candidate.score - item.score >= policy.minimum_replacement_edge
+            ),
+            None,
+        )
+        if replacement is not None and snapshot.estimated_switch_cost_pct is not None:
+            reserved_replacements.add(replacement.assessment.ticker)
+            disposition[ticker] = (AdvisoryAction.REPLACE, replacement)
+        else:
+            disposition[ticker] = (AdvisoryAction.HOLD, None)
+            if replacement is not None:
+                warnings.append(
+                    f"{ticker}: replacement suppressed because switch cost is missing"
+                )
+
+    locked_value = sum(
+        current[ticker].current_value_egp
+        for ticker, (action, _) in disposition.items()
+        if action is AdvisoryAction.HOLD and ticker not in selected_by_ticker
+    )
+    locked_weight = locked_value / total_value if total_value else 0
+    desired_cash = mandate.max_cash_weight
+    if locked_weight + desired_cash > 1:
+        warnings.append("Locked positions leave no room for the normal cash reserve")
+        desired_cash = max(0.0, 1 - locked_weight)
+
+    available_for_selected = max(0.0, 1 - desired_cash - locked_weight)
+    selected_target = min(
+        mandate.max_position_weight,
+        available_for_selected / len(selected),
+    )
+    actual_target_cash = max(
+        desired_cash,
+        1 - locked_weight - selected_target * len(selected),
+    )
+
+    actions: list[PlanAction] = []
+    for ticker in sorted(current):
+        position = current[ticker]
+        item = by_ticker.get(ticker)
+        action, replacement = disposition[ticker]
+        current_weight = position.current_value_egp / total_value if total_value else 0
+
+        if ticker in selected_by_ticker:
+            chosen = selected_by_ticker[ticker]
+            delta = selected_target - current_weight
             if delta > policy.rebalance_tolerance:
                 action = AdvisoryAction.ADD
             elif delta < -policy.rebalance_tolerance:
@@ -264,35 +330,27 @@ def build_portfolio_plan(
                 PlanAction(
                     ticker=ticker,
                     action=action,
-                    target_weight=target_weight,
+                    target_weight=selected_target,
                     value_change_egp=round(delta * total_value, 2),
-                    score=item.score,
-                    confidence=item.confidence,
+                    score=chosen.score,
+                    confidence=chosen.confidence,
                     reasons=("Selected by verified score and diversification rules",),
                 )
             )
             continue
 
-        replacement = next(
-            (
-                candidate
-                for candidate in selected
-                if candidate.assessment.ticker not in current
-                and candidate.score is not None
-                and item.score is not None
-                and candidate.score - item.score >= policy.minimum_replacement_edge
-            ),
-            None,
-        )
-        if replacement and snapshot.estimated_switch_cost_pct is not None:
+        if action is AdvisoryAction.REPLACE and replacement is not None:
             actions.append(
                 PlanAction(
                     ticker=ticker,
-                    action=AdvisoryAction.REPLACE,
+                    action=action,
                     target_weight=0,
                     value_change_egp=-position.current_value_egp,
-                    score=item.score,
-                    confidence=min(item.confidence, replacement.confidence),
+                    score=item.score if item else None,
+                    confidence=min(
+                        item.confidence if item else 0,
+                        replacement.confidence,
+                    ),
                     replacement_ticker=replacement.assessment.ticker,
                     reasons=(
                         f"Replacement score edge is "
@@ -302,16 +360,22 @@ def build_portfolio_plan(
                     ),
                 )
             )
-        elif item.score < policy.exit_score:
+        elif action is AdvisoryAction.SELL:
+            reason = (
+                "Fresh Sharia classification is not buy-eligible"
+                if item
+                and item.assessment.sharia_tier not in mandate.allowed_sharia_tiers
+                else "Verified score fell below the exit threshold"
+            )
             actions.append(
                 PlanAction(
                     ticker=ticker,
-                    action=AdvisoryAction.SELL,
+                    action=action,
                     target_weight=0,
                     value_change_egp=-position.current_value_egp,
-                    score=item.score,
-                    confidence=item.confidence,
-                    reasons=("Verified score fell below the exit threshold",),
+                    score=item.score if item else None,
+                    confidence=item.confidence if item else 0,
+                    reasons=(reason,),
                 )
             )
         else:
@@ -321,11 +385,9 @@ def build_portfolio_plan(
                     action=AdvisoryAction.HOLD,
                     target_weight=current_weight,
                     value_change_egp=0,
-                    score=item.score,
-                    confidence=item.confidence,
-                    reasons=(
-                        "No cost-supported replacement edge; avoid unnecessary churn",
-                    ),
+                    score=item.score if item else None,
+                    confidence=item.confidence if item else 0,
+                    reasons=("Position locked; no reliable evidence-backed action",),
                 )
             )
 
@@ -333,34 +395,51 @@ def build_portfolio_plan(
         ticker = item.assessment.ticker
         if ticker in current:
             continue
-        value = round(target_weight * total_value, 2)
+        target_value = round(selected_target * total_value, 2)
         actions.append(
             PlanAction(
                 ticker=ticker,
                 action=AdvisoryAction.BUY,
-                target_weight=target_weight,
-                value_change_egp=value,
+                target_weight=selected_target,
+                value_change_egp=target_value,
                 score=item.score,
                 confidence=item.confidence,
                 reasons=("Eligible, high-ranked, and fits sector concentration limits",),
             )
         )
 
+    # Validate the target budget produced by the plan.  Rounding is expressed in
+    # currency, while this invariant remains in weights.
+    target_total = (
+        actual_target_cash
+        + locked_weight
+        + selected_target * len(selected)
+    )
+    if abs(target_total - 1.0) > 1e-6:
+        blocked.append(f"Internal target budget mismatch: {target_total:.6f}")
+
     projected_total = total_value + mandate.monthly_contribution_egp
     underweights = []
     for item in selected:
         held = current.get(item.assessment.ticker)
         held_value = held.current_value_egp if held else 0
-        deficit = target_weight * projected_total - held_value
+        deficit = selected_target * projected_total - held_value
         underweights.append((deficit, item))
 
     best_deficit, best = max(underweights, key=lambda pair: pair[0])
-    if best_deficit > 0:
+    if best_deficit > 0 and not blocked:
         monthly_action = PlanAction(
             ticker=best.assessment.ticker,
-            action=AdvisoryAction.ADD if best.assessment.ticker in current else AdvisoryAction.BUY,
-            target_weight=target_weight,
-            value_change_egp=min(mandate.monthly_contribution_egp, round(best_deficit, 2)),
+            action=(
+                AdvisoryAction.ADD
+                if best.assessment.ticker in current
+                else AdvisoryAction.BUY
+            ),
+            target_weight=selected_target,
+            value_change_egp=min(
+                mandate.monthly_contribution_egp,
+                round(best_deficit, 2),
+            ),
             score=best.score,
             confidence=best.confidence,
             reasons=("Largest verified gap below target allocation",),
@@ -369,18 +448,18 @@ def build_portfolio_plan(
         monthly_action = PlanAction(
             ticker=None,
             action=AdvisoryAction.KEEP_CASH,
-            target_weight=target_cash,
+            target_weight=actual_target_cash,
             value_change_egp=mandate.monthly_contribution_egp,
             confidence=1.0,
-            reasons=("All selected positions are at or above target",),
+            reasons=("No safe verified allocation is currently available",),
         )
 
     return PortfolioPlan(
         analysis_date=snapshot.analysis_date,
         investable_value_egp=total_value,
-        target_cash_weight=target_cash,
+        target_cash_weight=actual_target_cash,
         actions=tuple(actions),
         monthly_contribution_action=monthly_action,
         blocked_reasons=tuple(blocked),
-        warnings=tuple(warnings),
+        warnings=tuple(dict.fromkeys(warnings)),
     )
