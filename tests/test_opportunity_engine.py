@@ -199,3 +199,32 @@ def test_board_separates_new_ideas_holdings_and_replacements():
     assert "COMI.CA" in board.holding_reviews
     assert board.replacements
     assert board.replacements[0].replace is True
+
+
+@pytest.mark.unit
+def test_valuation_cannot_use_evidence_published_after_valuation_date():
+    result = evaluate_opportunity(
+        candidate(),
+        analysis_date=date(2026, 9, 14),
+        valuation=valuation(as_of=date(2026, 6, 1)),
+    )
+
+    assert result.status is OpportunityStatus.WATCH
+    assert any("as-of evidence" in risk.lower() for risk in result.risks)
+
+
+@pytest.mark.unit
+def test_macro_regime_fails_neutral_on_lookahead_evidence():
+    result = classify_regime(
+        MacroRegimeInput(
+            fx_depreciation_90d_pct=20,
+            market_return_90d_pct=-20,
+            as_of=date(2026, 8, 1),
+            evidence=(evidence("cbe_macro", "EFID"),),
+        ),
+        date(2026, 9, 14),
+    )
+
+    assert result.regime is MarketRegime.NEUTRAL
+    assert result.confidence == 0
+    assert any("evidence" in reason.lower() for reason in result.reasons)
