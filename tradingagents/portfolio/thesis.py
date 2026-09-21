@@ -146,7 +146,7 @@ def evaluate_thesis(
             evidence_issues = tuple(
                 issue
                 for ref in pillar.evidence
-                for issue in validate_evidence_for_date(ref, analysis_date)
+                for issue in validate_evidence_for_date(ref, pillar.as_of)
             )
             if stale or evidence_issues:
                 status = PillarStatus.UNTESTED
