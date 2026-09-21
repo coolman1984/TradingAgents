@@ -85,3 +85,30 @@ def test_stale_broken_value_is_not_allowed_to_trigger_exit():
     assert result.status is ThesisStatus.UNTESTED
     assert result.action is ThesisAction.WAIT_FOR_PROOF
     assert result.pillars[0].status is PillarStatus.UNTESTED
+
+
+@pytest.mark.unit
+def test_thesis_observation_cannot_use_later_evidence():
+    lookahead_pillar = ThesisPillar(
+        name="growth",
+        metric="revenue_growth_pct",
+        higher_is_better=True,
+        confirm_threshold=20,
+        warning_threshold=10,
+        break_threshold=0,
+        current_value=-20,
+        as_of=date(2026, 6, 1),
+        evidence=(evidence(date(2026, 9, 1)),),
+        next_test="Recheck at next results",
+    )
+    tracker = ThesisTracker(
+        ticker="EFID",
+        thesis="Growth remains durable",
+        pillars=(lookahead_pillar,),
+    )
+
+    result = evaluate_thesis(tracker, date(2026, 9, 14))
+
+    assert result.status is ThesisStatus.UNTESTED
+    assert result.action is ThesisAction.WAIT_FOR_PROOF
+    assert result.pillars[0].status is PillarStatus.UNTESTED
