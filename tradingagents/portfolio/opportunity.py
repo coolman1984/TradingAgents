@@ -82,6 +82,27 @@ class MacroRegimeInput(StrictModel):
                 raise ValueError("macro observations require an as_of date")
             if not self.evidence:
                 raise ValueError("macro observations require evidence")
+
+            sources = {ref.source for ref in self.evidence}
+            if (
+                self.annual_inflation_pct is not None
+                and "capmas_inflation" not in sources
+            ):
+                raise ValueError("inflation observations require CAPMAS evidence")
+            if (
+                self.policy_rate_pct is not None
+                or self.fx_depreciation_90d_pct is not None
+            ) and "cbe_macro" not in sources:
+                raise ValueError("rates and FX observations require CBE evidence")
+            if any(
+                value is not None
+                for value in (
+                    self.market_return_90d_pct,
+                    self.market_volatility_60d_pct,
+                    self.market_breadth_pct,
+                )
+            ) and "egx_prices" not in sources:
+                raise ValueError("market observations require official EGX price evidence")
         return self
 
 
@@ -119,6 +140,11 @@ class ValuationCase(StrictModel):
             raise ValueError("valuation evidence must identify the security")
         if not any(ref.source == "egx_prices" for ref in self.evidence):
             raise ValueError("valuation case requires official EGX price evidence")
+        if not any(
+            ref.source in {"egx_financial_statements", "egx_disclosures"}
+            for ref in self.evidence
+        ):
+            raise ValueError("valuation case requires EGX financial evidence")
         return self
 
     @property
