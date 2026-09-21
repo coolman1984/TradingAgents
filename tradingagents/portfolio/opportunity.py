@@ -176,6 +176,26 @@ class OpportunityBoard(StrictModel):
     replacements: tuple[ReplacementDecision, ...]
 
 
+class OpportunityRequest(StrictModel):
+    snapshot: PortfolioSnapshot
+    valuations: tuple[ValuationCase, ...]
+    macro: MacroRegimeInput = Field(default_factory=MacroRegimeInput)
+
+    @model_validator(mode="after")
+    def unique_valuations(self):
+        tickers = [item.ticker for item in self.valuations]
+        if len(tickers) != len(set(tickers)):
+            raise ValueError("valuation cases contain duplicate tickers")
+        candidate_tickers = {item.ticker for item in self.snapshot.candidates}
+        unknown = sorted(set(tickers) - candidate_tickers)
+        if unknown:
+            raise ValueError(
+                "valuation cases contain tickers outside the snapshot: "
+                + ", ".join(unknown)
+            )
+        return self
+
+
 _BASE_WEIGHTS = {
     AnalysisDimension.FUNDAMENTAL: 0.25,
     AnalysisDimension.VALUATION: 0.20,
