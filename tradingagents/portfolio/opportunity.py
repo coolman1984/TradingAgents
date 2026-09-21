@@ -9,6 +9,7 @@ guardrails.
 
 from __future__ import annotations
 
+from datetime import date
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -79,7 +80,7 @@ class ValuationCase(StrictModel):
     fair_value_low_egp: float = Field(gt=0)
     fair_value_base_egp: float = Field(gt=0)
     fair_value_high_egp: float = Field(gt=0)
-    as_of: str
+    as_of: date
     evidence: tuple[EvidenceRef, ...] = Field(min_length=1)
 
     @field_validator("ticker")
@@ -357,7 +358,7 @@ def _valuation_metrics(
 def evaluate_opportunity(
     assessment: SecurityAssessment,
     *,
-    analysis_date,
+    analysis_date: date,
     regime: MarketRegime = MarketRegime.NEUTRAL,
     valuation: ValuationCase | None = None,
     held: bool = False,
@@ -395,6 +396,12 @@ def evaluate_opportunity(
             blockers.append("Valuation ticker does not match the security")
             valuation_usable = False
         else:
+            if valuation.as_of > analysis_date:
+                risks.append("Valuation case is from the future")
+                valuation_usable = False
+            elif (analysis_date - valuation.as_of).days > engine_policy.max_dimension_age_days:
+                risks.append("Valuation case is stale")
+                valuation_usable = False
             for ref in valuation.evidence:
                 issues = validate_evidence_for_date(ref, analysis_date)
                 if issues:
