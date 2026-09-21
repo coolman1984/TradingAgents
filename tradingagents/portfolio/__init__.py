@@ -1,6 +1,13 @@
 """Portfolio-level advisory domain for the Egypt-focused product."""
 
 from .backtest import DecisionOutcome, PerformanceSummary, summarize_outcomes
+from .factors import (
+    FactorInput,
+    FactorScoreCard,
+    apply_factor_dimensions,
+    score_factor_universe,
+    to_dimension_scores,
+)
 from .mandate import (
     DEFAULT_EGX_BALANCED_MANDATE,
     Allocation,
@@ -36,6 +43,8 @@ __all__ = [
     "DEFAULT_OPPORTUNITY_POLICY",
     "Allocation",
     "DecisionOutcome",
+    "FactorInput",
+    "FactorScoreCard",
     "MacroRegimeInput",
     "MarketRegime",
     "OpportunityBoard",
@@ -54,9 +63,12 @@ __all__ = [
     "ThesisStatus",
     "ThesisTracker",
     "ValuationCase",
+    "apply_factor_dimensions",
     "build_opportunity_board",
     "classify_regime",
     "evaluate_thesis",
+    "score_factor_universe",
+    "to_dimension_scores",
     "summarize_outcomes",
     "validate_portfolio",
 ]
