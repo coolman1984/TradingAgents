@@ -18,8 +18,8 @@ from tradingagents.portfolio.opportunity import (
     OpportunityRequest,
     build_opportunity_board,
 )
-from tradingagents.portfolio.thesis import ThesisTracker, evaluate_thesis
 from tradingagents.portfolio.reporting import save_plan_report
+from tradingagents.portfolio.thesis import ThesisTracker, evaluate_thesis
 
 app = typer.Typer(
     name="egx-portfolio",
@@ -190,7 +190,7 @@ def thesis_check(
         resolve_path=True,
         help="UTF-8 JSON file containing a ThesisTracker.",
     ),
-    analysis_date: date = typer.Option(..., "--analysis-date"),
+    analysis_date: str = typer.Option(..., "--analysis-date"),
     output_file: Path = typer.Option(
         Path("egx-output/thesis_evaluation.json"),
         "--output",
@@ -216,7 +216,11 @@ def thesis_check(
         for pillar in tracker.pillars:
             for reference in pillar.evidence:
                 store.require(reference)
-        evaluation = evaluate_thesis(tracker, analysis_date)
+        try:
+            parsed_analysis_date = date.fromisoformat(analysis_date)
+        except ValueError as exc:
+            raise ValueError("analysis-date must use YYYY-MM-DD") from exc
+        evaluation = evaluate_thesis(tracker, parsed_analysis_date)
         _write_json_model(evaluation, output_file, force=force)
     except (OSError, ValidationError, ValueError) as exc:
         typer.echo(f"Thesis error: {exc}", err=True)
