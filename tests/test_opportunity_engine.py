@@ -156,7 +156,7 @@ def test_macro_classifier_uses_only_modest_regime_posture():
             market_volatility_60d_pct=40,
             market_breadth_pct=25,
             as_of=date(2026, 9, 1),
-            evidence=(evidence("cbe_macro", "EFID"),),
+            evidence=(evidence("cbe_macro", "EFID"), evidence("egx_prices", "EFID")),
         ),
         date(2026, 9, 14),
     )
