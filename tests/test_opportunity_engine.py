@@ -80,7 +80,10 @@ def valuation(
         fair_value_base_egp=base,
         fair_value_high_egp=high,
         as_of=as_of,
-        evidence=(evidence("egx_financial_statements", ticker),),
+        evidence=(
+            evidence("egx_prices", ticker),
+            evidence("egx_financial_statements", ticker),
+        ),
     )
 
 
@@ -152,7 +155,10 @@ def test_macro_classifier_uses_only_modest_regime_posture():
             market_return_90d_pct=-15,
             market_volatility_60d_pct=40,
             market_breadth_pct=25,
-        )
+            as_of=date(2026, 9, 1),
+            evidence=(evidence("cbe_macro", "EFID"),),
+        ),
+        date(2026, 9, 14),
     )
     risk_on = classify_regime(
         MacroRegimeInput(
@@ -160,7 +166,10 @@ def test_macro_classifier_uses_only_modest_regime_posture():
             market_return_90d_pct=12,
             market_volatility_60d_pct=17,
             market_breadth_pct=70,
-        )
+            as_of=date(2026, 9, 1),
+            evidence=(evidence("cbe_macro", "EFID"),),
+        ),
+        date(2026, 9, 14),
     )
 
     assert stress.regime is MarketRegime.STRESS
