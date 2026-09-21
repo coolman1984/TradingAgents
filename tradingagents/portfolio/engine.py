@@ -123,6 +123,18 @@ def score_security(
         if _days_old(item.as_of, analysis_date) > policy.max_dimension_age_days:
             data_issues.append(f"{dimension.value} assessment is stale")
             continue
+        assessment_date_issues = tuple(
+            issue
+            for ref in item.evidence
+            for issue in validate_evidence_for_date(ref, item.as_of)
+        )
+        if assessment_date_issues:
+            data_issues.extend(
+                f"{dimension.value} assessment-date evidence: {issue}"
+                for issue in assessment_date_issues
+            )
+            continue
+
         evidence_issues = tuple(
             issue
             for ref in item.evidence
