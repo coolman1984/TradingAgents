@@ -14,7 +14,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from tradingagents.markets.egypt import normalize_egx_equity_ticker
 from tradingagents.markets.egypt_sources import validate_evidence_for_date
-from tradingagents.portfolio.models import AnalysisDimension, DimensionScore, EvidenceRef
+from tradingagents.portfolio.models import (
+    AnalysisDimension,
+    DimensionScore,
+    EvidenceRef,
+    SecurityAssessment,
+)
 
 
 class StrictModel(BaseModel):
@@ -214,6 +219,8 @@ def _validate_record(record: FactorInput, analysis_date: date) -> tuple[str, ...
 def score_factor_universe(
     records: tuple[FactorInput, ...],
     analysis_date: date,
+    *,
+    maximum_record_age_days: int = 30,
 ) -> tuple[FactorScoreCard, ...]:
     """Rank a whole universe; a hand-picked tiny list should have lower confidence."""
     if not records:
@@ -221,6 +228,14 @@ def score_factor_universe(
     tickers = [record.ticker for record in records]
     if len(tickers) != len(set(tickers)):
         raise ValueError("factor universe contains duplicate tickers")
+    as_of_dates = {record.as_of for record in records}
+    if len(as_of_dates) != 1:
+        raise ValueError("factor universe records must share one as_of date")
+    universe_as_of = next(iter(as_of_dates))
+    if universe_as_of > analysis_date:
+        raise ValueError("factor universe as_of date is from the future")
+    if (analysis_date - universe_as_of).days > maximum_record_age_days:
+        raise ValueError("factor universe is stale")
 
     metric_percentiles: dict[str, dict[str, float]] = {}
     for metrics in _METRICS.values():
@@ -315,6 +330,33 @@ def to_dimension_scores(
                 confidence=card.dimension_confidence[dimension.value],
                 as_of=record.as_of,
                 evidence=evidence,
+            )
+        )
+    return tuple(results)
+
+
+def apply_factor_dimensions(
+    assessments: tuple[SecurityAssessment, ...],
+    records: tuple[FactorInput, ...],
+    cards: tuple[FactorScoreCard, ...],
+) -> tuple[SecurityAssessment, ...]:
+    """Replace model-authored dimensions with deterministic factor dimensions."""
+
+    record_map = {item.ticker: item for item in records}
+    card_map = {item.ticker: item for item in cards}
+    if len(record_map) != len(records) or len(card_map) != len(cards):
+        raise ValueError("factor records and cards must have unique tickers")
+
+    results: list[SecurityAssessment] = []
+    for assessment in assessments:
+        record = record_map.get(assessment.ticker)
+        card = card_map.get(assessment.ticker)
+        if record is None or card is None:
+            results.append(assessment)
+            continue
+        results.append(
+            assessment.model_copy(
+                update={"dimensions": to_dimension_scores(record, card)}
             )
         )
     return tuple(results)
