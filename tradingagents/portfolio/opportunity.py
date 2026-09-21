@@ -317,7 +317,7 @@ def classify_regime(
         evidence_issues = tuple(
             issue
             for ref in data.evidence
-            for issue in validate_evidence_for_date(ref, analysis_date)
+            for issue in validate_evidence_for_date(ref, data.as_of)
         )
         if evidence_issues:
             return RegimeAssessment(
@@ -505,6 +505,14 @@ def evaluate_opportunity(
                 risks.append("Valuation case is stale")
                 valuation_usable = False
             for ref in valuation.evidence:
+                historical_issues = validate_evidence_for_date(ref, valuation.as_of)
+                if historical_issues:
+                    risks.extend(
+                        f"Valuation as-of evidence: {item}"
+                        for item in historical_issues
+                    )
+                    valuation_usable = False
+                    continue
                 issues = validate_evidence_for_date(ref, analysis_date)
                 if issues:
                     risks.extend(f"Valuation evidence: {item}" for item in issues)
