@@ -373,3 +373,33 @@ def test_locked_holding_is_included_in_sector_concentration():
     assert plan.actions[0].ticker == "QNBA.CA"
     assert plan.actions[0].action is AdvisoryAction.HOLD
     assert plan.target_cash_weight == pytest.approx(0.60)
+
+
+@pytest.mark.unit
+def test_assessment_date_cannot_use_evidence_published_later():
+    assessed = candidate("EFID", as_of="2026-06-01")
+    lookahead = DimensionScore(
+        dimension=AnalysisDimension.FUNDAMENTAL,
+        score=95,
+        confidence=0.95,
+        as_of=date(2026, 6, 1),
+        evidence=(
+            evidence(
+                published_on="2026-08-01",
+                source="egx_financial_statements",
+                subjects=("EFID",),
+            ),
+        ),
+    )
+    dimensions = tuple(
+        lookahead
+        if item.dimension is AnalysisDimension.FUNDAMENTAL
+        else item
+        for item in assessed.dimensions
+    )
+    assessed = assessed.model_copy(update={"dimensions": dimensions})
+
+    result = score_security(assessed, date(2026, 9, 14))
+
+    assert result.decision_ready is False
+    assert any("assessment-date evidence" in issue for issue in result.issues)
