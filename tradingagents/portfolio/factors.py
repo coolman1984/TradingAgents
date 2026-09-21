@@ -28,6 +28,7 @@ class StrictModel(BaseModel):
 
 class FactorInput(StrictModel):
     ticker: str
+    sector: str = Field(min_length=1)
     as_of: date
     financial_evidence: tuple[EvidenceRef, ...] = Field(min_length=1)
     price_evidence: tuple[EvidenceRef, ...] = Field(min_length=1)
@@ -63,6 +64,14 @@ class FactorInput(StrictModel):
     @classmethod
     def normalize_ticker(cls, value: str) -> str:
         return normalize_egx_equity_ticker(value)
+
+    @field_validator("sector")
+    @classmethod
+    def normalize_sector(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("sector cannot be blank")
+        return normalized
 
     @field_validator(
         "roic_pct",
@@ -205,6 +214,56 @@ def _percentile_map(
     return result
 
 
+def _sector_key(value: str) -> str:
+    return " ".join(value.split()).casefold()
+
+
+def _blended_percentile_map(
+    records: tuple[FactorInput, ...],
+    metric: str,
+    *,
+    higher_is_better: bool,
+) -> dict[str, float]:
+    """Blend sector-relative and market-relative ranks for valuation metrics."""
+
+    market_values = {
+        record.ticker: cleaned
+        for record in records
+        if (cleaned := _clean_metric(metric, getattr(record, metric))) is not None
+    }
+    market = _percentile_map(
+        market_values,
+        higher_is_better=higher_is_better,
+    )
+    if not market:
+        return {}
+
+    by_sector: dict[str, list[FactorInput]] = {}
+    for record in records:
+        by_sector.setdefault(_sector_key(record.sector), []).append(record)
+
+    result: dict[str, float] = {}
+    for members in by_sector.values():
+        sector_values = {
+            record.ticker: cleaned
+            for record in members
+            if (cleaned := _clean_metric(metric, getattr(record, metric))) is not None
+        }
+        if len(sector_values) < 3:
+            for ticker in sector_values:
+                result[ticker] = market[ticker]
+            continue
+
+        sector = _percentile_map(
+            sector_values,
+            higher_is_better=higher_is_better,
+        )
+        for ticker, sector_score in sector.items():
+            result[ticker] = round(0.70 * sector_score + 0.30 * market[ticker], 4)
+
+    return result
+
+
 def _validate_record(record: FactorInput, analysis_date: date) -> tuple[str, ...]:
     issues: list[str] = []
     if record.as_of > analysis_date:
@@ -238,8 +297,16 @@ def score_factor_universe(
         raise ValueError("factor universe is stale")
 
     metric_percentiles: dict[str, dict[str, float]] = {}
-    for metrics in _METRICS.values():
+    for dimension, metrics in _METRICS.items():
         for metric, higher_is_better in metrics:
+            if dimension is AnalysisDimension.VALUATION:
+                metric_percentiles[metric] = _blended_percentile_map(
+                    records,
+                    metric,
+                    higher_is_better=higher_is_better,
+                )
+                continue
+
             values = {
                 record.ticker: cleaned
                 for record in records
