@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, egx-opportunity-intelligence-v2]
   pull_request:
 
 concurrency:
