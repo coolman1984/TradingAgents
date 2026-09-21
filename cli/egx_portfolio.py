@@ -55,6 +55,8 @@ def _verify_opportunity_evidence(
     for valuation in request.valuations:
         for reference in valuation.evidence:
             store.require(reference)
+    for reference in request.macro.evidence:
+        store.require(reference)
 
 
 def _write_json_model(model, output_file: Path, *, force: bool) -> None:
