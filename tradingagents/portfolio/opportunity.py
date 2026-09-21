@@ -56,7 +56,7 @@ class OpportunityStatus(str, Enum):
 
 
 class MacroRegimeInput(StrictModel):
-    """Small set of observable macro/market facts used only for modest tilts."""
+    """Observable macro/market facts used only for modest evidence-backed tilts."""
 
     annual_inflation_pct: float | None = None
     policy_rate_pct: float | None = None
@@ -64,6 +64,25 @@ class MacroRegimeInput(StrictModel):
     market_return_90d_pct: float | None = None
     market_volatility_60d_pct: float | None = Field(default=None, ge=0)
     market_breadth_pct: float | None = Field(default=None, ge=0, le=100)
+    as_of: date | None = None
+    evidence: tuple[EvidenceRef, ...] = ()
+
+    @model_validator(mode="after")
+    def require_evidence_for_observations(self):
+        observations = (
+            self.annual_inflation_pct,
+            self.policy_rate_pct,
+            self.fx_depreciation_90d_pct,
+            self.market_return_90d_pct,
+            self.market_volatility_60d_pct,
+            self.market_breadth_pct,
+        )
+        if any(value is not None for value in observations):
+            if self.as_of is None:
+                raise ValueError("macro observations require an as_of date")
+            if not self.evidence:
+                raise ValueError("macro observations require evidence")
+        return self
 
 
 class RegimeAssessment(StrictModel):
@@ -98,6 +117,8 @@ class ValuationCase(StrictModel):
             raise ValueError("fair values must satisfy low <= base <= high")
         if not any(self.ticker in ref.subjects for ref in self.evidence):
             raise ValueError("valuation evidence must identify the security")
+        if not any(ref.source == "egx_prices" for ref in self.evidence):
+            raise ValueError("valuation case requires official EGX price evidence")
         return self
 
     @property
@@ -133,6 +154,35 @@ class OpportunityPolicy(StrictModel):
     minimum_replacement_score_edge: float = 8
     minimum_replacement_return_edge_pct: float = 0.08
     replacement_safety_buffer_pct: float = 0.03
+
+    @model_validator(mode="after")
+    def validate_thresholds(self):
+        if not (
+            self.exit_score
+            < self.trim_score
+            < self.buy_score
+            <= self.add_score
+            < self.high_conviction_score
+        ):
+            raise ValueError(
+                "score thresholds must rise from exit through high conviction"
+            )
+        if self.high_conviction_confidence < self.minimum_confidence:
+            raise ValueError(
+                "high-conviction confidence cannot be below normal confidence"
+            )
+        if self.high_conviction_base_upside_pct < self.buy_base_upside_pct:
+            raise ValueError(
+                "high-conviction upside cannot be below normal buy upside"
+            )
+        if (
+            self.max_high_conviction_low_case_loss_pct
+            < self.max_buy_low_case_loss_pct
+        ):
+            raise ValueError(
+                "high-conviction downside limit must be at least as strict"
+            )
+        return self
 
 
 DEFAULT_OPPORTUNITY_POLICY = OpportunityPolicy()
@@ -245,8 +295,40 @@ _STATUS_PRIORITY = {
 }
 
 
-def classify_regime(data: MacroRegimeInput) -> RegimeAssessment:
+def classify_regime(
+    data: MacroRegimeInput,
+    analysis_date: date | None = None,
+) -> RegimeAssessment:
     """Classify a broad market regime without pretending macro timing is precise."""
+
+    if analysis_date is not None and data.as_of is not None:
+        if data.as_of > analysis_date:
+            return RegimeAssessment(
+                regime=MarketRegime.NEUTRAL,
+                confidence=0.0,
+                reasons=("Macro observations are from the future",),
+            )
+        if (analysis_date - data.as_of).days > 90:
+            return RegimeAssessment(
+                regime=MarketRegime.NEUTRAL,
+                confidence=0.0,
+                reasons=("Macro observations are stale",),
+            )
+        evidence_issues = tuple(
+            issue
+            for ref in data.evidence
+            for issue in validate_evidence_for_date(ref, analysis_date)
+        )
+        if evidence_issues:
+            return RegimeAssessment(
+                regime=MarketRegime.NEUTRAL,
+                confidence=0.0,
+                reasons=tuple(
+                    dict.fromkeys(
+                        f"Macro evidence: {issue}" for issue in evidence_issues
+                    )
+                ),
+            )
 
     stress = 0
     risk_on = 0
@@ -589,7 +671,10 @@ def build_opportunity_board(
 ) -> OpportunityBoard:
     """Build a market-wide opportunity board and rotation shortlist."""
 
-    regime = classify_regime(macro or MacroRegimeInput())
+    regime = classify_regime(
+        macro or MacroRegimeInput(),
+        snapshot.analysis_date,
+    )
     current = {item.ticker for item in snapshot.positions}
     valuation_map = {item.ticker: item for item in valuations}
 
