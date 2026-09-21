@@ -34,6 +34,7 @@ def record(index: int, *, as_of: date = date(2026, 9, 14)) -> FactorInput:
     ticker = f"T{index:02d}"
     return FactorInput(
         ticker=ticker,
+        sector="General",
         as_of=as_of,
         financial_evidence=(evidence("egx_financial_statements", ticker),),
         price_evidence=(evidence("egx_prices", ticker),),
